@@ -112,6 +112,29 @@ export function Risk() {
 
       setRiskSession(session)
       setStatus('waiting')
+
+      // Notify all admins that someone is waiting
+      const { data: admins } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin')
+
+      if (admins && admins.length > 0) {
+        const notifications = admins.map(admin => ({
+          user_id: admin.id,
+          type: 'risk_waiting',
+          title: '🎲 New Risk Session',
+          message: `${user.name} is waiting for a Level ${level.cost} card`,
+          data: {
+            session_id: session.id,
+            user_id: user.id,
+            user_name: user.name,
+            level: level.cost,
+          },
+        }))
+
+        await supabase.from('notifications').insert(notifications)
+      }
     } catch (error) {
       console.error('Error creating risk session:', error)
       showToast('error', 'Failed to start risk session')
