@@ -11,6 +11,7 @@ import { useUIStore } from '../stores/uiStore'
 export function Profile() {
   const navigate = useNavigate()
   const user = useUserStore((state) => state.user)
+  const isAdmin = useUserStore((state) => state.isAdmin)
   const logout = useUserStore((state) => state.logout)
   const showToast = useUIStore((state) => state.showToast)
 
@@ -55,6 +56,16 @@ export function Profile() {
 
         {/* Quick links */}
         <div className="space-y-3 mt-6">
+          {/* Admin Dashboard - Only for admins */}
+          {isAdmin() && (
+            <Card hoverable onClick={() => navigate('/admin')}>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">👑</span>
+                <span className="text-white font-medium">Admin Dashboard</span>
+              </div>
+            </Card>
+          )}
+
           <Card hoverable onClick={() => navigate('/history')}>
             <div className="flex items-center gap-3">
               <span className="text-2xl">📜</span>
