@@ -12,8 +12,16 @@ import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
 import { cn } from '../lib/utils'
 
+const tabs = [
+  { id: 'main', label: 'Main', icon: '🎯' },
+  { id: 'games', label: 'Games', icon: '🎮' },
+  { id: 'punishments', label: 'Punishments', icon: '😈' },
+]
+
 export function Missions() {
+  const [activeTab, setActiveTab] = useState('main')
   const [missions, setMissions] = useState([])
+  const [punishments, setPunishments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedMission, setSelectedMission] = useState(null)
   const user = useUserStore((state) => state.user)
@@ -21,12 +29,13 @@ export function Missions() {
 
   useEffect(() => {
     if (!user?.id) return
-    fetchMissions()
+    fetchData()
   }, [user?.id])
 
-  const fetchMissions = async () => {
+  const fetchData = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch missions
+      const { data: missionsData, error: missionsError } = await supabase
         .from('user_missions')
         .select(`
           *,
@@ -35,10 +44,24 @@ export function Missions() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      setMissions(data || [])
+      if (missionsError) throw missionsError
+      setMissions(missionsData || [])
+
+      // Fetch assigned punishments
+      const { data: punishmentsData, error: punishmentsError } = await supabase
+        .from('assigned_punishments')
+        .select(`
+          *,
+          from_user:users!assigned_punishments_from_user_id_fkey(name)
+        `)
+        .eq('to_user_id', user.id)
+        .in('status', ['pending', 'later'])
+        .order('created_at', { ascending: false })
+
+      if (punishmentsError) throw punishmentsError
+      setPunishments(punishmentsData || [])
     } catch (error) {
-      console.error('Error fetching missions:', error)
+      console.error('Error fetching data:', error)
     } finally {
       setIsLoading(false)
     }
@@ -68,7 +91,7 @@ export function Missions() {
         })
 
         showToast('success', `+${mission.reward} coins! Mission complete!`)
-        fetchMissions()
+        fetchData()
       } catch (error) {
         console.error('Error completing mission:', error)
         showToast('error', 'Failed to complete mission')
@@ -79,8 +102,11 @@ export function Missions() {
     }
   }
 
-  const activeMissions = missions.filter(m => m.status === 'assigned')
+  const mainMissions = missions.filter(m => m.status === 'assigned' && (!m.category || m.category === 'main'))
+  const gameMissions = missions.filter(m => m.status === 'assigned' && m.category === 'game')
   const completedMissions = missions.filter(m => m.status === 'completed')
+  const pendingPunishments = punishments.filter(p => p.status === 'pending')
+  const laterPunishments = punishments.filter(p => p.status === 'later')
 
   return (
     <>
@@ -93,34 +119,131 @@ export function Missions() {
           </div>
         ) : (
           <>
-            {/* Active Missions */}
-            {activeMissions.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                  📋 Active
-                  <Badge variant="purple" size="sm">{activeMissions.length}</Badge>
-                </h3>
+            {/* Tab Navigation */}
+            <div className="flex gap-2 mb-6 overflow-x-auto">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-purple-500 text-white'
+                      : 'bg-white/5 text-white/60 hover:bg-white/10'
+                  }`}
+                >
+                  {tab.icon} {tab.label}
+                  {tab.id === 'punishments' && pendingPunishments.length > 0 && (
+                    <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                      {pendingPunishments.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
 
-                <div className="space-y-3">
-                  {activeMissions.map((mission) => (
-                    <MissionCard
-                      key={mission.id}
-                      mission={mission}
-                      onComplete={() => handleComplete(mission)}
-                    />
-                  ))}
-                </div>
-              </div>
+            {/* Main Missions Tab */}
+            {activeTab === 'main' && (
+              <>
+                {mainMissions.length > 0 ? (
+                  <div className="space-y-3 mb-8">
+                    {mainMissions.map((mission) => (
+                      <MissionCard
+                        key={mission.id}
+                        mission={mission}
+                        onComplete={() => handleComplete(mission)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <span className="text-5xl block mb-4">🎯</span>
+                    <p className="text-slate-400">No main missions yet!</p>
+                  </div>
+                )}
+              </>
             )}
 
-            {/* Completed Missions */}
-            {completedMissions.length > 0 && (
-              <div>
+            {/* Game Missions Tab */}
+            {activeTab === 'games' && (
+              <>
+                {gameMissions.length > 0 ? (
+                  <div className="space-y-3 mb-8">
+                    {gameMissions.map((mission) => (
+                      <MissionCard
+                        key={mission.id}
+                        mission={mission}
+                        onComplete={() => handleComplete(mission)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <span className="text-5xl block mb-4">🎮</span>
+                    <p className="text-slate-400">No game missions yet!</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Punishments Tab */}
+            {activeTab === 'punishments' && (
+              <>
+                {pendingPunishments.length > 0 || laterPunishments.length > 0 ? (
+                  <>
+                    {/* Pending Punishments */}
+                    {pendingPunishments.length > 0 && (
+                      <div className="mb-6">
+                        <h3 className="text-sm font-semibold text-red-400 uppercase tracking-wide mb-3">
+                          ⏰ Active
+                        </h3>
+                        <div className="space-y-3">
+                          {pendingPunishments.map((punishment) => (
+                            <PunishmentCard
+                              key={punishment.id}
+                              punishment={punishment}
+                              onRefresh={fetchData}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Later Punishments */}
+                    {laterPunishments.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                          📅 Saved for Later
+                        </h3>
+                        <div className="space-y-3">
+                          {laterPunishments.map((punishment) => (
+                            <PunishmentCard
+                              key={punishment.id}
+                              punishment={punishment}
+                              onRefresh={fetchData}
+                              isLater
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <span className="text-5xl block mb-4">😈</span>
+                    <p className="text-slate-400">No punishments!</p>
+                    <p className="text-slate-500 text-sm mt-2">You're doing great!</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Completed Section (all tabs) */}
+            {completedMissions.length > 0 && activeTab !== 'punishments' && (
+              <div className="mt-8">
                 <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
                   ✅ Completed
                   <Badge variant="success" size="sm">{completedMissions.length}</Badge>
                 </h3>
-
                 <div className="space-y-3">
                   {completedMissions.map((mission) => (
                     <MissionCard
@@ -133,22 +256,14 @@ export function Missions() {
               </div>
             )}
 
-            {missions.length === 0 && (
-              <div className="text-center py-12">
-                <span className="text-5xl block mb-4">🎯</span>
-                <p className="text-slate-400">No missions yet!</p>
-                <p className="text-slate-500 text-sm mt-2">
-                  Missions will be assigned soon...
+            {/* Warning */}
+            {activeTab !== 'punishments' && (
+              <div className="mt-8 bg-status-warning/10 rounded-xl p-4">
+                <p className="text-status-warning text-sm">
+                  ⚠️ Missions are SECRET! Don't reveal yours to others.
                 </p>
               </div>
             )}
-
-            {/* Warning */}
-            <div className="mt-8 bg-status-warning/10 rounded-xl p-4">
-              <p className="text-status-warning text-sm">
-                ⚠️ Missions are SECRET! Don't reveal yours to others.
-              </p>
-            </div>
           </>
         )}
       </PageWrapper>
@@ -233,6 +348,231 @@ function MissionCard({ mission, completed, onComplete }) {
           <Button variant="success" size="sm" fullWidth onClick={onComplete}>
             ✓ COMPLETE
           </Button>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function PunishmentCard({ punishment, onRefresh, isLater }) {
+  const [timeLeft, setTimeLeft] = useState(null)
+  const [isSkipping, setIsSkipping] = useState(false)
+  const user = useUserStore((state) => state.user)
+  const updateBalance = useUserStore((state) => state.updateBalance)
+  const showToast = useUIStore((state) => state.showToast)
+
+  useEffect(() => {
+    if (!punishment.deadline || isLater) return
+
+    const updateTimer = () => {
+      const deadline = new Date(punishment.deadline)
+      const now = new Date()
+      const diff = deadline - now
+
+      if (diff <= 0) {
+        setTimeLeft('EXPIRED')
+      } else {
+        const minutes = Math.floor(diff / 60000)
+        const seconds = Math.floor((diff % 60000) / 1000)
+        setTimeLeft(`${minutes}:${seconds.toString().padStart(2, '0')}`)
+      }
+    }
+
+    updateTimer()
+    const interval = setInterval(updateTimer, 1000)
+
+    return () => clearInterval(interval)
+  }, [punishment.deadline, isLater])
+
+  const handleDone = async () => {
+    try {
+      await supabase
+        .from('assigned_punishments')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', punishment.id)
+
+      showToast('success', 'Punishment completed!')
+      onRefresh()
+    } catch (error) {
+      console.error('Error completing punishment:', error)
+      showToast('error', 'Failed to complete')
+    }
+  }
+
+  const handleLater = async () => {
+    try {
+      await supabase
+        .from('assigned_punishments')
+        .update({ status: 'later' })
+        .eq('id', punishment.id)
+
+      showToast('info', 'Saved for later')
+      onRefresh()
+    } catch (error) {
+      console.error('Error saving punishment:', error)
+      showToast('error', 'Failed to save')
+    }
+  }
+
+  const handleSkipWithCoins = async () => {
+    if (user.balance < 1) {
+      showToast('error', 'Not enough coins!')
+      return
+    }
+
+    setIsSkipping(true)
+    try {
+      // Deduct 1 coin
+      const newBalance = user.balance - 1
+      await supabase
+        .from('users')
+        .update({ balance: newBalance })
+        .eq('id', user.id)
+
+      await supabase.from('transactions').insert({
+        from_user_id: user.id,
+        amount: 1,
+        type: 'punishment_skip',
+        description: `Skipped: ${punishment.punishment_text.substring(0, 30)}`,
+      })
+
+      updateBalance(newBalance)
+
+      // Mark punishment as declined
+      await supabase
+        .from('assigned_punishments')
+        .update({
+          status: 'declined',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', punishment.id)
+
+      showToast('success', 'Punishment skipped for 1 coin')
+      onRefresh()
+    } catch (error) {
+      console.error('Error skipping punishment:', error)
+      showToast('error', 'Failed to skip')
+    } finally {
+      setIsSkipping(false)
+    }
+  }
+
+  const handleSkipWithDrink = async () => {
+    setIsSkipping(true)
+    try {
+      // Mark current punishment as declined
+      await supabase
+        .from('assigned_punishments')
+        .update({
+          status: 'declined',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', punishment.id)
+
+      // Create new drink punishment
+      await supabase.from('assigned_punishments').insert({
+        to_user_id: user.id,
+        punishment_text: `Take a drink (skipped: ${punishment.punishment_text})`,
+        source: 'punishment_decline',
+        status: 'pending',
+        deadline: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      })
+
+      showToast('info', 'Punishment swapped for a drink')
+      onRefresh()
+    } catch (error) {
+      console.error('Error swapping punishment:', error)
+      showToast('error', 'Failed to swap')
+    } finally {
+      setIsSkipping(false)
+    }
+  }
+
+  const isExpired = timeLeft === 'EXPIRED'
+
+  return (
+    <Card className={cn(isExpired && 'border-red-500/50 bg-red-500/5')}>
+      <div className="flex items-start gap-3 mb-3">
+        <span className="text-2xl">😈</span>
+        <div className="flex-1">
+          <p className="text-white">{punishment.punishment_text}</p>
+          {punishment.from_user?.name && (
+            <p className="text-slate-400 text-sm mt-1">
+              From: {punishment.from_user.name}
+            </p>
+          )}
+
+          {!isLater && timeLeft && (
+            <div className="mt-2">
+              <Badge
+                variant={isExpired ? 'danger' : 'warning'}
+                size="sm"
+              >
+                {isExpired ? '⏰ EXPIRED' : `⏰ ${timeLeft}`}
+              </Badge>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isLater ? (
+        <Button
+          variant="primary"
+          size="sm"
+          fullWidth
+          onClick={async () => {
+            await supabase
+              .from('assigned_punishments')
+              .update({
+                status: 'pending',
+                deadline: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+              })
+              .eq('id', punishment.id)
+            showToast('info', 'Punishment activated!')
+            onRefresh()
+          }}
+        >
+          ▶️ Do Now
+        </Button>
+      ) : (
+        <div className="space-y-2">
+          <Button
+            variant="success"
+            size="sm"
+            fullWidth
+            onClick={handleDone}
+          >
+            ✓ Done
+          </Button>
+
+          <div className="grid grid-cols-3 gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleLater}
+            >
+              ⏰ Later
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSkipWithDrink}
+              loading={isSkipping}
+            >
+              🍺 Drink
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handleSkipWithCoins}
+              loading={isSkipping}
+            >
+              💰 1🪙
+            </Button>
+          </div>
         </div>
       )}
     </Card>
