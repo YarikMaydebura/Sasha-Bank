@@ -7,12 +7,20 @@ import { Badge } from '../../components/ui/Badge'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Spinner } from '../../components/ui/Spinner'
+import { AdminRiskPanel } from '../../components/admin/AdminRiskPanel'
 import { supabase } from '../../lib/supabase'
 import { useUIStore } from '../../stores/uiStore'
 import { missionTemplates, getPersonalizedMissions, generateMissionText } from '../../data/missions'
 import { pickRandom } from '../../lib/utils'
 
+const tabs = [
+  { id: 'overview', label: 'Overview', icon: '👥' },
+  { id: 'risk', label: 'Risk', icon: '🎲' },
+  { id: 'bar', label: 'Bar', icon: '🍸' },
+]
+
 export function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState('overview')
   const [users, setUsers] = useState([])
   const [barOrders, setBarOrders] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -162,16 +170,36 @@ export function AdminDashboard() {
       <Header title="👑 Admin Panel" showBack />
 
       <PageWrapper className="pt-0 pb-8">
-        {/* Status */}
-        <Card className="mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-400 text-sm">Guests</p>
-              <p className="text-white text-2xl font-bold">{guestCount}</p>
-            </div>
-            <Badge variant="success">Live</Badge>
-          </div>
-        </Card>
+        {/* Tab Navigation */}
+        <div className="flex gap-2 mb-6 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-white/5 text-white/60 hover:bg-white/10'
+              }`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'overview' && (
+          <>
+            {/* Status */}
+            <Card className="mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">Guests</p>
+                  <p className="text-white text-2xl font-bold">{guestCount}</p>
+                </div>
+                <Badge variant="success">Live</Badge>
+              </div>
+            </Card>
 
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3 mb-6">
@@ -199,38 +227,6 @@ export function AdminDashboard() {
         >
           🎯 GENERATE PERSONAL MISSIONS
         </Button>
-
-        {/* Pending Bar Orders */}
-        {barOrders.length > 0 && (
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-              Pending Orders
-              <Badge variant="pink" size="sm">{barOrders.length}</Badge>
-            </h3>
-
-            <div className="space-y-2">
-              {barOrders.map((order) => (
-                <Card key={order.id} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white font-mono font-bold">
-                      #{order.order_code}
-                    </p>
-                    <p className="text-slate-400 text-sm">
-                      {order.users?.name} - {order.drink_name}
-                    </p>
-                  </div>
-                  <Button
-                    variant="success"
-                    size="sm"
-                    onClick={() => handleMarkServed(order)}
-                  >
-                    ✓ Served
-                  </Button>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* All Guests */}
         <div>
@@ -265,6 +261,47 @@ export function AdminDashboard() {
               ))}
           </div>
         </div>
+          </>
+        )}
+
+        {/* Risk Tab */}
+        {activeTab === 'risk' && (
+          <AdminRiskPanel />
+        )}
+
+        {/* Bar Tab */}
+        {activeTab === 'bar' && (
+          <>
+            {/* Pending Bar Orders */}
+            {barOrders.length === 0 ? (
+              <Card className="text-center py-8">
+                <p className="text-white/60">No pending orders</p>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {barOrders.map((order) => (
+                  <Card key={order.id} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-white font-mono font-bold">
+                        #{order.order_code}
+                      </p>
+                      <p className="text-slate-400 text-sm">
+                        {order.users?.name} - {order.drink_name}
+                      </p>
+                    </div>
+                    <Button
+                      variant="success"
+                      size="sm"
+                      onClick={() => handleMarkServed(order)}
+                    >
+                      ✓ Served
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </PageWrapper>
 
       {/* Adjust Coins Modal */}

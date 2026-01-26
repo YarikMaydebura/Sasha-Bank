@@ -81,6 +81,29 @@
   .confetti-gold { background-color: #FCD34D; }
   .confetti-purple { background-color: #A78BFA; }
   .confetti-pink { background-color: #FBCFE8; }
+
+  /* 3D Card flip animation */
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+
+  .rotate-y-0 {
+    transform: rotateY(0deg);
+  }
+
+  .backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
+  /* Fade in animation for buttons */
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out;
+  }
 }
 
 @layer utilities {
