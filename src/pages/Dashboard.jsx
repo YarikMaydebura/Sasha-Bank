@@ -15,6 +15,12 @@ const stations = [
     href: '/bar',
   },
   {
+    icon: '🛒',
+    title: 'Market',
+    subtitle: 'Shop & gifts',
+    href: '/market',
+  },
+  {
     icon: '🧠',
     title: 'Trivia',
     cost: '1🪙',
@@ -50,6 +56,7 @@ const stations = [
 export function Dashboard() {
   const user = useUserStore((state) => state.user)
   const updateBalance = useUserStore((state) => state.updateBalance)
+  const isAdmin = useUserStore((state) => state.isAdmin)
 
   // Subscribe to balance changes
   useEffect(() => {
@@ -92,6 +99,19 @@ export function Dashboard() {
         <div className="mt-4">
           <BalanceCard balance={user.balance} />
         </div>
+
+        {/* Admin Dashboard - Only for admins */}
+        {isAdmin() && (
+          <div className="mt-6">
+            <StationCard
+              icon="👑"
+              title="Admin Dashboard"
+              subtitle="Manage party"
+              href="/admin"
+              className="w-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-500/30"
+            />
+          </div>
+        )}
 
         {/* Stations Section */}
         <div className="mt-8">

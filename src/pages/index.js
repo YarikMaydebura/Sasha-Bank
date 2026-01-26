@@ -1,6 +1,7 @@
 export { Welcome } from './Welcome'
 export { Dashboard } from './Dashboard'
 export { Bar } from './Bar'
+export { Market } from './Market'
 export { Trivia } from './Trivia'
 export { Risk } from './Risk'
 export { Box } from './Box'

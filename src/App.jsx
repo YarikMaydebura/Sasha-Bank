@@ -10,6 +10,7 @@ import {
   Welcome,
   Dashboard,
   Bar,
+  Market,
   Trivia,
   Risk,
   Box,
@@ -91,6 +92,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Bar />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/market"
+          element={
+            <ProtectedRoute>
+              <Market />
             </ProtectedRoute>
           }
         />
