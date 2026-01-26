@@ -2,12 +2,14 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { CoinBadge } from '../ui/Badge'
+import { NotificationBell } from '../ui/NotificationBell'
 import { useUserStore } from '../../stores/userStore'
 
 export function Header({
   title,
   showBack = false,
   showBalance = true,
+  showNotifications = true,
   rightAction,
   className,
 }) {
@@ -41,8 +43,9 @@ export function Header({
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {rightAction}
+          {showNotifications && user && <NotificationBell />}
           {showBalance && user && (
             <CoinBadge amount={user.balance} size="md" animated />
           )}

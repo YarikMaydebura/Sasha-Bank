@@ -21,6 +21,7 @@ import {
   Leaderboard,
   Profile,
   Scan,
+  Notifications,
   AdminDashboard,
 } from './pages'
 
@@ -178,6 +179,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Scan />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <Notifications />
             </ProtectedRoute>
           }
         />
