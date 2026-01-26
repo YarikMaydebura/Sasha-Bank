@@ -1,6 +1,7 @@
 -- ============================================
 -- SASHA BANK V2 DATABASE MIGRATION
 -- Run this in Supabase SQL Editor
+-- SAFE TO RE-RUN: Uses IF NOT EXISTS checks
 -- ============================================
 
 -- ============================================
@@ -191,6 +192,15 @@ ALTER TABLE assigned_punishments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gift_drinks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE song_requests ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Allow all" ON risk_sessions;
+DROP POLICY IF EXISTS "Allow all" ON notifications;
+DROP POLICY IF EXISTS "Allow all" ON user_abilities;
+DROP POLICY IF EXISTS "Allow all" ON purchased_favors;
+DROP POLICY IF EXISTS "Allow all" ON assigned_punishments;
+DROP POLICY IF EXISTS "Allow all" ON gift_drinks;
+DROP POLICY IF EXISTS "Allow all" ON song_requests;
+
 -- Allow all for simplicity (party app)
 CREATE POLICY "Allow all" ON risk_sessions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON notifications FOR ALL USING (true) WITH CHECK (true);
@@ -204,11 +214,36 @@ CREATE POLICY "Allow all" ON song_requests FOR ALL USING (true) WITH CHECK (true
 -- 10. REALTIME SUBSCRIPTIONS
 -- ============================================
 
-ALTER PUBLICATION supabase_realtime ADD TABLE risk_sessions;
-ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
-ALTER PUBLICATION supabase_realtime ADD TABLE user_abilities;
-ALTER PUBLICATION supabase_realtime ADD TABLE assigned_punishments;
-ALTER PUBLICATION supabase_realtime ADD TABLE gift_drinks;
+-- Add tables to realtime publication (ignore if already added)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE risk_sessions;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE user_abilities;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE assigned_punishments;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE gift_drinks;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ============================================
 -- 11. HELPER FUNCTIONS
