@@ -47,12 +47,13 @@ function ProtectedRoute({ children }) {
 function AdminRoute({ children }) {
   const user = useUserStore((state) => state.user)
   const isLoading = useUserStore((state) => state.isLoading)
+  const isAdmin = useUserStore((state) => state.isAdmin)
 
   if (isLoading) {
     return <LoadingScreen message="Loading..." />
   }
 
-  if (!user?.is_admin) {
+  if (!isAdmin()) {
     return <Navigate to="/dashboard" replace />
   }
 

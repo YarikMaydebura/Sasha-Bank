@@ -5,17 +5,21 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
-import { supabase } from '../lib/supabase'
-import { generateQRCode, CONSTANTS } from '../lib/utils'
+import { checkUserExists, registerUser, loginUser } from '../lib/auth'
+import { CONSTANTS } from '../lib/utils'
 
 export function Welcome() {
+  const [step, setStep] = useState('name') // 'name', 'create_pin', 'enter_pin'
   const [name, setName] = useState('')
+  const [pin, setPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [existingUser, setExistingUser] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
   const setUser = useUserStore((state) => state.setUser)
   const showToast = useUIStore((state) => state.showToast)
 
-  const handleJoin = async (e) => {
+  const handleNameSubmit = async (e) => {
     e.preventDefault()
 
     if (!name.trim()) {
@@ -26,53 +30,99 @@ export function Welcome() {
     setIsLoading(true)
 
     try {
-      const qrCode = generateQRCode()
+      // Check if user exists
+      const user = await checkUserExists(name)
 
-      // Create user in Supabase
-      const { data: user, error } = await supabase
-        .from('users')
-        .insert({
-          name: name.trim(),
-          balance: CONSTANTS.STARTING_COINS,
-          qr_code: qrCode,
-          is_admin: false,
-        })
-        .select()
-        .single()
+      if (user) {
+        // User exists - need to login
+        if (!user.pin_hash) {
+          // V1 user - needs to create PIN
+          setExistingUser(user)
+          setStep('create_pin')
+          showToast('info', 'Welcome back! Please create a PIN to secure your account')
+        } else {
+          // V2 user - login
+          setExistingUser(user)
+          setStep('enter_pin')
+        }
+      } else {
+        // New user - create PIN
+        setStep('create_pin')
+      }
+    } catch (error) {
+      console.error('Name check error:', error)
+      showToast('error', 'Something went wrong. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
-      if (error) throw error
+  const handleCreatePIN = async (e) => {
+    e.preventDefault()
 
-      // Create initial transaction
-      await supabase.from('transactions').insert({
-        to_user_id: user.id,
-        amount: CONSTANTS.STARTING_COINS,
-        type: 'registration',
-        description: 'Welcome to Sasha Bank!',
-      })
+    if (pin.length !== 4 || !/^\d+$/.test(pin)) {
+      showToast('error', 'PIN must be 4 digits')
+      return
+    }
 
-      // Save user to store
+    if (pin !== confirmPin) {
+      showToast('error', 'PINs do not match')
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      // Register new user
+      const user = await registerUser(name, pin)
+
       setUser(user)
-
       showToast('success', `Welcome, ${user.name}! You received ${CONSTANTS.STARTING_COINS} coins!`)
       navigate('/dashboard')
     } catch (error) {
       console.error('Registration error:', error)
-
-      // Fallback: create local user if Supabase fails
-      const localUser = {
-        id: crypto.randomUUID(),
-        name: name.trim(),
-        balance: CONSTANTS.STARTING_COINS,
-        qr_code: generateQRCode(),
-        is_admin: false,
-        created_at: new Date().toISOString(),
-      }
-      setUser(localUser)
-      showToast('warning', 'Offline mode - some features may be limited')
-      navigate('/dashboard')
+      showToast('error', error.message || 'Failed to create account')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+
+    if (pin.length !== 4 || !/^\d+$/.test(pin)) {
+      showToast('error', 'PIN must be 4 digits')
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      const user = await loginUser(name, pin)
+
+      setUser(user)
+      showToast('success', `Welcome back, ${user.name}!`)
+      navigate('/dashboard')
+    } catch (error) {
+      console.error('Login error:', error)
+      showToast('error', error.message === 'Incorrect PIN' ? 'Incorrect PIN' : 'Login failed')
+      setPin('')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleBack = () => {
+    setStep('name')
+    setPin('')
+    setConfirmPin('')
+    setExistingUser(null)
+  }
+
+  const handlePINInput = (value, setter) => {
+    // Only allow digits and max 4 characters
+    const sanitized = value.replace(/\D/g, '').slice(0, 4)
+    setter(sanitized)
   }
 
   return (
@@ -92,32 +142,145 @@ export function Welcome() {
           </p>
         </div>
 
-        {/* Registration Form */}
-        <form onSubmit={handleJoin} className="space-y-6">
-          <Input
-            label="What's your name?"
-            placeholder="Enter your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={30}
-            autoFocus
-          />
+        {/* Step 1: Enter Name */}
+        {step === 'name' && (
+          <form onSubmit={handleNameSubmit} className="space-y-6">
+            <Input
+              label="What's your name?"
+              placeholder="Enter your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={30}
+              autoFocus
+            />
 
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={isLoading}
-            disabled={!name.trim()}
-          >
-            🎉 JOIN PARTY
-          </Button>
-        </form>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={isLoading}
+              disabled={!name.trim()}
+            >
+              🎉 CONTINUE
+            </Button>
 
-        <p className="text-slate-500 text-sm mt-6">
-          You'll receive <span className="text-coin-gold">{CONSTANTS.STARTING_COINS} coins</span> to start!
-        </p>
+            <p className="text-slate-500 text-sm mt-6">
+              {existingUser ? 'Welcome back!' : `You'll receive ${CONSTANTS.STARTING_COINS} coins to start!`}
+            </p>
+          </form>
+        )}
+
+        {/* Step 2: Create PIN (New User) */}
+        {step === 'create_pin' && (
+          <form onSubmit={handleCreatePIN} className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold mb-2">
+                {existingUser ? 'Secure Your Account' : 'Create a PIN'}
+              </h2>
+              <p className="text-slate-400 text-sm mb-6">
+                {existingUser
+                  ? 'Create a 4-digit PIN to secure your account'
+                  : 'Easy to remember (like 2025 or 1234)'}
+              </p>
+            </div>
+
+            <Input
+              label="Create 4-digit PIN"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="••••"
+              value={pin}
+              onChange={(e) => handlePINInput(e.target.value, setPin)}
+              maxLength={4}
+              autoFocus
+            />
+
+            <Input
+              label="Confirm PIN"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="••••"
+              value={confirmPin}
+              onChange={(e) => handlePINInput(e.target.value, setConfirmPin)}
+              maxLength={4}
+            />
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={isLoading}
+              disabled={pin.length !== 4 || confirmPin.length !== 4}
+            >
+              ✓ CREATE ACCOUNT
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              fullWidth
+              onClick={handleBack}
+            >
+              ← Back
+            </Button>
+          </form>
+        )}
+
+        {/* Step 3: Enter PIN (Existing User Login) */}
+        {step === 'enter_pin' && (
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold mb-2">
+                Welcome back, {name}! 👋
+              </h2>
+              <p className="text-slate-400 text-sm mb-6">
+                Enter your 4-digit PIN
+              </p>
+            </div>
+
+            <Input
+              label="PIN"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="••••"
+              value={pin}
+              onChange={(e) => handlePINInput(e.target.value, setPin)}
+              maxLength={4}
+              autoFocus
+            />
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={isLoading}
+              disabled={pin.length !== 4}
+            >
+              ✓ LOGIN
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              fullWidth
+              onClick={handleBack}
+            >
+              ← Back
+            </Button>
+
+            <p className="text-slate-500 text-xs mt-4">
+              Forgot PIN? Ask an admin for help
+            </p>
+          </form>
+        )}
       </div>
     </PageWrapper>
   )
