@@ -23,8 +23,11 @@ export function Bar() {
   const handleOrder = async () => {
     if (!selectedDrink || !user) return
 
-    // Check balance
-    if (user.balance < selectedDrink.price) {
+    const freeDrinksRemaining = 2 - (user.free_drinks_used || 0)
+    const isFreeOrder = freeDrinksRemaining > 0
+
+    // Check balance only if not using free drink
+    if (!isFreeOrder && user.balance < selectedDrink.price) {
       showToast('error', "Not enough coins!")
       return
     }
@@ -39,37 +42,51 @@ export function Bar() {
         user_id: user.id,
         drink_id: selectedDrink.id,
         drink_name: selectedDrink.name,
-        price: selectedDrink.price,
+        price: isFreeOrder ? 0 : selectedDrink.price,
         order_code: code,
         status: 'pending',
       })
 
       if (orderError) throw orderError
 
-      // Deduct coins if not free
-      if (selectedDrink.price > 0) {
-        const newBalance = user.balance - selectedDrink.price
-
-        const { error: balanceError } = await supabase
+      if (isFreeOrder) {
+        // Use free drink - increment counter
+        const { error: updateError } = await supabase
           .from('users')
-          .update({ balance: newBalance })
+          .update({ free_drinks_used: (user.free_drinks_used || 0) + 1 })
           .eq('id', user.id)
 
-        if (balanceError) throw balanceError
+        if (updateError) throw updateError
 
-        // Log transaction
-        await supabase.from('transactions').insert({
-          from_user_id: user.id,
-          amount: selectedDrink.price,
-          type: 'bar_order',
-          description: `Ordered ${selectedDrink.name}`,
-        })
+        showToast('success', `🎁 Free drink used! ${freeDrinksRemaining - 1} remaining`)
+      } else {
+        // Deduct coins if not free
+        if (selectedDrink.price > 0) {
+          const newBalance = user.balance - selectedDrink.price
 
-        updateBalance(newBalance)
+          const { error: balanceError } = await supabase
+            .from('users')
+            .update({ balance: newBalance })
+            .eq('id', user.id)
+
+          if (balanceError) throw balanceError
+
+          // Log transaction
+          await supabase.from('transactions').insert({
+            from_user_id: user.id,
+            amount: selectedDrink.price,
+            type: 'bar_order',
+            description: `Ordered ${selectedDrink.name}`,
+          })
+
+          updateBalance(newBalance)
+        }
       }
 
       setOrderCode(code)
-      showToast('success', 'Order placed!')
+      if (!isFreeOrder) {
+        showToast('success', 'Order placed!')
+      }
     } catch (error) {
       console.error('Order error:', error)
       showToast('error', 'Failed to place order')
@@ -83,14 +100,34 @@ export function Bar() {
     drinks: drinks.filter((d) => d.category === category.id),
   }))
 
+  const freeDrinksRemaining = 2 - (user?.free_drinks_used || 0)
+  const hasFreeDrinks = freeDrinksRemaining > 0
+
   return (
     <>
       <Header title="Bar Menu" showBack showBalance />
 
       <PageWrapper className="pt-0 pb-8">
-        <p className="text-pastel-purple-light text-sm mb-6">
+        <p className="text-pastel-purple-light text-sm mb-4">
           🍸 What would you like?
         </p>
+
+        {/* Free Drinks Banner */}
+        {hasFreeDrinks && (
+          <Card className="mb-6 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-500/30">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">🎁</span>
+              <div>
+                <p className="text-yellow-400 font-bold">
+                  {freeDrinksRemaining} Free Drink{freeDrinksRemaining > 1 ? 's' : ''} Remaining!
+                </p>
+                <p className="text-white/70 text-sm">
+                  First 2 drinks are on the house
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Menu grouped by category */}
         {groupedDrinks.map((category) => (
@@ -108,7 +145,8 @@ export function Bar() {
                   key={drink.id}
                   drink={drink}
                   onSelect={() => setSelectedDrink(drink)}
-                  disabled={drink.price > user?.balance}
+                  disabled={!hasFreeDrinks && drink.price > user?.balance}
+                  hasFreeDrinks={hasFreeDrinks}
                 />
               ))}
             </div>
@@ -128,14 +166,27 @@ export function Bar() {
             <h3 className="text-xl font-semibold text-white">
               {selectedDrink.name}
             </h3>
-            <p className="text-coin-gold text-2xl font-bold mt-2">
-              {selectedDrink.price === 0 ? 'FREE' : `${selectedDrink.price}🪙`}
-            </p>
 
-            {selectedDrink.price > 0 && (
-              <p className="text-slate-400 text-sm mt-4">
-                Your balance: {user?.balance}🪙 → {user?.balance - selectedDrink.price}🪙
-              </p>
+            {hasFreeDrinks ? (
+              <>
+                <p className="text-status-success text-2xl font-bold mt-2">
+                  🎁 FREE
+                </p>
+                <p className="text-slate-400 text-sm mt-2">
+                  Using 1 of {freeDrinksRemaining} free drinks
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-coin-gold text-2xl font-bold mt-2">
+                  {selectedDrink.price === 0 ? 'FREE' : `${selectedDrink.price}🪙`}
+                </p>
+                {selectedDrink.price > 0 && (
+                  <p className="text-slate-400 text-sm mt-4">
+                    Your balance: {user?.balance}🪙 → {user?.balance - selectedDrink.price}🪙
+                  </p>
+                )}
+              </>
             )}
 
             <div className="flex flex-col gap-3 mt-6">
@@ -203,7 +254,9 @@ export function Bar() {
   )
 }
 
-function DrinkItem({ drink, onSelect, disabled }) {
+function DrinkItem({ drink, onSelect, disabled, hasFreeDrinks }) {
+  const displayPrice = hasFreeDrinks ? 0 : drink.price
+
   return (
     <Card
       hoverable={!disabled}
@@ -220,12 +273,16 @@ function DrinkItem({ drink, onSelect, disabled }) {
           {drink.popular && (
             <Badge variant="pink" size="sm">⭐ Popular</Badge>
           )}
+          {hasFreeDrinks && drink.price > 0 && (
+            <Badge variant="success" size="sm">🎁 FREE</Badge>
+          )}
         </div>
         <p className="text-slate-400 text-sm truncate">{drink.description}</p>
       </div>
       <span className={cn(
         'font-bold',
-        drink.price === 0 ? 'text-status-success' : 'text-coin-gold'
+        displayPrice === 0 ? 'text-status-success' : 'text-coin-gold',
+        hasFreeDrinks && drink.price > 0 && 'line-through opacity-50'
       )}>
         {drink.price === 0 ? 'FREE' : `${drink.price}🪙`}
       </span>
