@@ -3,16 +3,19 @@ import { useNavigate } from 'react-router-dom'
 import { PageWrapper } from '../components/layout/PageWrapper'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { Card } from '../components/ui/Card'
 import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
 import { checkUserExists, registerUser, loginUser } from '../lib/auth'
-import { CONSTANTS } from '../lib/utils'
+import { guestTraits } from '../data/traits'
+import { CONSTANTS, cn } from '../lib/utils'
 
 export function Welcome() {
-  const [step, setStep] = useState('name') // 'name', 'create_pin', 'enter_pin'
+  const [step, setStep] = useState('name') // 'name', 'create_pin', 'select_trait', 'enter_pin'
   const [name, setName] = useState('')
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
+  const [selectedTrait, setSelectedTrait] = useState(null)
   const [existingUser, setExistingUser] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
@@ -57,7 +60,7 @@ export function Welcome() {
     }
   }
 
-  const handleCreatePIN = async (e) => {
+  const handlePINCreated = (e) => {
     e.preventDefault()
 
     if (pin.length !== 4 || !/^\d+$/.test(pin)) {
@@ -70,11 +73,30 @@ export function Welcome() {
       return
     }
 
+    // If existing user, register immediately
+    if (existingUser) {
+      handleCreateAccount()
+    } else {
+      // New user - go to trait selection
+      setStep('select_trait')
+    }
+  }
+
+  const handleTraitSelected = () => {
+    if (!selectedTrait) {
+      showToast('error', 'Please select your personality type')
+      return
+    }
+
+    handleCreateAccount()
+  }
+
+  const handleCreateAccount = async () => {
     setIsLoading(true)
 
     try {
-      // Register new user
-      const user = await registerUser(name, pin)
+      // Register new user with trait
+      const user = await registerUser(name, pin, selectedTrait?.id)
 
       setUser(user)
       showToast('success', `Welcome, ${user.name}! You received ${CONSTANTS.STARTING_COINS} coins!`)
@@ -113,10 +135,16 @@ export function Welcome() {
   }
 
   const handleBack = () => {
-    setStep('name')
-    setPin('')
-    setConfirmPin('')
-    setExistingUser(null)
+    if (step === 'select_trait') {
+      setStep('create_pin')
+      setSelectedTrait(null)
+    } else {
+      setStep('name')
+      setPin('')
+      setConfirmPin('')
+      setExistingUser(null)
+      setSelectedTrait(null)
+    }
   }
 
   const handlePINInput = (value, setter) => {
@@ -171,9 +199,9 @@ export function Welcome() {
           </form>
         )}
 
-        {/* Step 2: Create PIN (New User) */}
+        {/* Step 2: Create PIN */}
         {step === 'create_pin' && (
-          <form onSubmit={handleCreatePIN} className="space-y-6">
+          <form onSubmit={handlePINCreated} className="space-y-6">
             <div>
               <h2 className="text-xl font-semibold mb-2">
                 {existingUser ? 'Secure Your Account' : 'Create a PIN'}
@@ -213,10 +241,9 @@ export function Welcome() {
               variant="primary"
               size="lg"
               fullWidth
-              loading={isLoading}
               disabled={pin.length !== 4 || confirmPin.length !== 4}
             >
-              ✓ CREATE ACCOUNT
+              {existingUser ? '✓ CREATE ACCOUNT' : '→ NEXT'}
             </Button>
 
             <Button
@@ -231,7 +258,67 @@ export function Welcome() {
           </form>
         )}
 
-        {/* Step 3: Enter PIN (Existing User Login) */}
+        {/* Step 3: Select Trait (New Users Only) */}
+        {step === 'select_trait' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold mb-2">
+                What's your party style?
+              </h2>
+              <p className="text-slate-400 text-sm mb-6">
+                This helps us give you fun missions!
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {guestTraits.map((trait) => (
+                <Card
+                  key={trait.id}
+                  hoverable
+                  onClick={() => setSelectedTrait(trait)}
+                  className={cn(
+                    'cursor-pointer transition-all',
+                    selectedTrait?.id === trait.id
+                      ? 'ring-2 ring-purple-500 bg-purple-500/20'
+                      : 'hover:bg-white/5'
+                  )}
+                  style={{
+                    borderColor: selectedTrait?.id === trait.id ? trait.color : undefined,
+                  }}
+                >
+                  <div className="text-center py-2">
+                    <span className="text-3xl block mb-2">{trait.emoji}</span>
+                    <p className="text-white text-sm font-medium">{trait.name}</p>
+                    <p className="text-slate-400 text-xs mt-1">{trait.description}</p>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            <Button
+              variant="primary"
+              size="lg"
+              fullWidth
+              onClick={handleTraitSelected}
+              loading={isLoading}
+              disabled={!selectedTrait}
+            >
+              ✓ CREATE ACCOUNT
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              fullWidth
+              onClick={handleBack}
+            >
+              ← Back
+            </Button>
+          </div>
+        )}
+
+        {/* Step 4: Enter PIN (Existing User Login) */}
         {step === 'enter_pin' && (
           <form onSubmit={handleLogin} className="space-y-6">
             <div>

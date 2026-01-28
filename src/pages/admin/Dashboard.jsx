@@ -8,6 +8,10 @@ import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Spinner } from '../../components/ui/Spinner'
 import { AdminRiskPanel } from '../../components/admin/AdminRiskPanel'
+import { LotteryDrawPanel } from '../../components/admin/LotteryDrawPanel'
+import { PokerPanel } from '../../components/admin/PokerPanel'
+import { PhotoGalleryPanel } from '../../components/admin/PhotoGalleryPanel'
+import { GuestAskPanel } from '../../components/admin/GuestAskPanel'
 import { supabase } from '../../lib/supabase'
 import { useUIStore } from '../../stores/uiStore'
 import { missionTemplates, getPersonalizedMissions, generateMissionText } from '../../data/missions'
@@ -17,6 +21,10 @@ const tabs = [
   { id: 'overview', label: 'Overview', icon: '👥' },
   { id: 'risk', label: 'Risk', icon: '🎲' },
   { id: 'bar', label: 'Bar', icon: '🍸' },
+  { id: 'lottery', label: 'Lottery', icon: '🎰' },
+  { id: 'poker', label: 'Poker', icon: '🃏' },
+  { id: 'photos', label: 'Photos', icon: '📸' },
+  { id: 'guest_ask', label: 'Guest Ask', icon: '🔔' },
 ]
 
 export function AdminDashboard() {
@@ -301,6 +309,26 @@ export function AdminDashboard() {
               </div>
             )}
           </>
+        )}
+
+        {/* Lottery Tab */}
+        {activeTab === 'lottery' && (
+          <LotteryDrawPanel />
+        )}
+
+        {/* Poker Tab */}
+        {activeTab === 'poker' && (
+          <PokerPanel />
+        )}
+
+        {/* Photos Tab */}
+        {activeTab === 'photos' && (
+          <PhotoGalleryPanel />
+        )}
+
+        {/* Guest Ask Tab */}
+        {activeTab === 'guest_ask' && (
+          <GuestAskPanel />
         )}
       </PageWrapper>
 

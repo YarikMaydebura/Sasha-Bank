@@ -1,88 +1,63 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { PageWrapper } from '../components/layout/PageWrapper'
 import { Header } from '../components/layout/Header'
+import { BottomNav } from '../components/layout/BottomNav'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { WaitingScreen } from '../components/risk/WaitingScreen'
-import { CardAnimation } from '../components/risk/CardAnimation'
-import { getCardById } from '../data/physicalRiskCards'
+import { Modal } from '../components/ui/Modal'
 import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
 import { supabase } from '../lib/supabase'
+import { getRandomCard, cardRarities } from '../data/cards'
 import { cn } from '../lib/utils'
 
 const riskLevels = [
-  { cost: 1, label: 'Low', description: 'Safer cards', emoji: '😊' },
-  { cost: 2, label: 'Med', description: 'Balanced risk', emoji: '😬' },
-  { cost: 3, label: 'High', description: 'Big risks!', emoji: '💀' },
+  { cost: 1, label: 'Low', description: 'Small risks, small rewards', emoji: '😊' },
+  { cost: 2, label: 'Med', description: 'Balanced risk & reward', emoji: '😬' },
+  { cost: 3, label: 'High', description: 'High risk, high reward!', emoji: '💀' },
+]
+
+// Digital risk cards (automated, instant results)
+const digitalRiskCards = [
+  // Rewards
+  { id: 'R1', type: 'reward', coins: 2, emoji: '🎁', message: 'Lucky! +2 coins' },
+  { id: 'R2', type: 'reward', coins: 3, emoji: '💰', message: 'Nice! +3 coins' },
+  { id: 'R3', type: 'reward', coins: 5, emoji: '💎', message: 'Jackpot! +5 coins' },
+  { id: 'R4', type: 'reward', coins: 4, emoji: '✨', message: 'Great! +4 coins' },
+  { id: 'R5', type: 'reward', coins: 1, emoji: '🪙', message: 'Small win +1 coin' },
+
+  // Losses
+  { id: 'L1', type: 'loss', coins: -1, emoji: '😅', message: 'Close call! -1 coin' },
+  { id: 'L2', type: 'loss', coins: -2, emoji: '😬', message: 'Oops! -2 coins' },
+  { id: 'L3', type: 'loss', coins: -3, emoji: '💀', message: 'Brutal! -3 coins' },
+
+  // Neutral
+  { id: 'N1', type: 'neutral', coins: 0, emoji: '😐', message: 'Nothing happens' },
+  { id: 'N2', type: 'neutral', coins: 0, emoji: '🤷', message: 'Break even' },
 ]
 
 export function Risk() {
-  const navigate = useNavigate()
+  const [selectedLevel, setSelectedLevel] = useState(null)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [result, setResult] = useState(null)
+  const [wonCard, setWonCard] = useState(null)
+  const [showResult, setShowResult] = useState(false)
+
   const user = useUserStore((state) => state.user)
   const updateBalance = useUserStore((state) => state.updateBalance)
   const showToast = useUIStore((state) => state.showToast)
 
-  const [selectedLevel, setSelectedLevel] = useState(null)
-  const [riskSession, setRiskSession] = useState(null)
-  const [drawnCard, setDrawnCard] = useState(null)
-  const [status, setStatus] = useState('idle') // idle, waiting, assigned, completed
-
-  // Subscribe to risk session updates
-  useEffect(() => {
-    if (!riskSession?.id) return
-
-    const channel = supabase
-      .channel(`risk_session:${riskSession.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'risk_sessions',
-          filter: `id=eq.${riskSession.id}`,
-        },
-        (payload) => {
-          console.log('Risk session updated:', payload.new)
-          const updated = payload.new
-
-          if (updated.status === 'assigned' && updated.card_id) {
-            // Admin assigned a card
-            const card = getCardById(updated.card_id)
-            setDrawnCard(card)
-            setStatus('assigned')
-
-            // Apply coin changes immediately
-            if (card.coin_change) {
-              applyCardEffect(card)
-            }
-
-            // Apply special effects
-            if (card.special) {
-              applySpecialEffect(card)
-            }
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      channel.unsubscribe()
-    }
-  }, [riskSession?.id])
-
-  const handleSelectLevel = async (level) => {
-    if (user.balance < level.cost) {
+  const handleDraw = async () => {
+    if (!selectedLevel || user.balance < selectedLevel.cost) {
       showToast('error', 'Not enough coins!')
       return
     }
 
-    setSelectedLevel(level)
+    setIsDrawing(true)
 
     try {
-      // Deduct cost
-      const newBalance = user.balance - level.cost
+      // Deduct entry cost
+      const newBalance = user.balance - selectedLevel.cost
       await supabase
         .from('users')
         .update({ balance: newBalance })
@@ -90,348 +65,296 @@ export function Risk() {
 
       await supabase.from('transactions').insert({
         from_user_id: user.id,
-        amount: level.cost,
-        type: 'risk_draw',
-        description: `Risk station entry (Level ${level.cost})`,
+        amount: selectedLevel.cost,
+        type: 'risk_entry',
+        description: `Risk station entry (Level ${selectedLevel.cost})`,
       })
 
       updateBalance(newBalance)
 
-      // Create risk session
-      const { data: session, error } = await supabase
-        .from('risk_sessions')
-        .insert({
+      // Simulate card draw animation delay
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
+      // 10% chance to win a collectible card instead of coins
+      const wonCollectibleCard = Math.random() < 0.10
+
+      if (wonCollectibleCard) {
+        // User won a collectible card!
+        const card = getRandomCard()
+        setWonCard(card)
+
+        // Create card record
+        await supabase.from('user_cards').insert({
           user_id: user.id,
-          level: level.cost,
-          status: 'waiting',
+          card_id: card.id,
+          card_name: card.name,
+          card_emoji: card.emoji,
+          description: card.description,
+          rarity: card.rarity,
+          status: 'owned',
+          obtained_from: 'risk',
         })
-        .select()
-        .single()
 
-      if (error) throw error
+        // Create risk session for tracking
+        await supabase.from('risk_sessions').insert({
+          user_id: user.id,
+          level: selectedLevel.cost,
+          status: 'completed',
+          card_reward_id: card.id,
+          card_reward_name: card.name,
+          card_reward_rarity: card.rarity,
+          completed_at: new Date().toISOString(),
+        })
 
-      setRiskSession(session)
-      setStatus('waiting')
+        setResult({
+          type: 'card',
+          card: card,
+          message: `You won a ${card.rarity} card!`,
+        })
+      } else {
+        // Normal coin result
+        const drawnCard = getRandomDigitalCard(selectedLevel.cost)
+        const finalCoins = drawnCard.coins
 
-      // Notify all admins that someone is waiting
-      const { data: admins } = await supabase
-        .from('users')
-        .select('id')
-        .eq('role', 'admin')
-
-      if (admins && admins.length > 0) {
-        const notifications = admins.map(admin => ({
-          user_id: admin.id,
-          type: 'risk_waiting',
-          title: '🎲 New Risk Session',
-          message: `${user.name} is waiting for a Level ${level.cost} card`,
-          data: {
-            session_id: session.id,
-            user_id: user.id,
-            user_name: user.name,
-            level: level.cost,
-          },
-        }))
-
-        await supabase.from('notifications').insert(notifications)
-      }
-    } catch (error) {
-      console.error('Error creating risk session:', error)
-      showToast('error', 'Failed to start risk session')
-    }
-  }
-
-  const applyCardEffect = async (card) => {
-    if (!card.coin_change || card.coin_change === 0) return
-
-    try {
-      const newBalance = user.balance + card.coin_change
-      await supabase
-        .from('users')
-        .update({ balance: newBalance })
-        .eq('id', user.id)
-
-      await supabase.from('transactions').insert({
-        [card.coin_change > 0 ? 'to_user_id' : 'from_user_id']: user.id,
-        amount: Math.abs(card.coin_change),
-        type: 'risk_reward',
-        description: `${card.name}: ${card.description}`,
-      })
-
-      updateBalance(newBalance)
-
-      if (card.coin_change > 0) {
-        showToast('success', `+${card.coin_change} coins!`)
-      }
-    } catch (error) {
-      console.error('Error applying card effect:', error)
-    }
-  }
-
-  const applySpecialEffect = async (card) => {
-    try {
-      if (card.special === 'immunity_shield') {
-        await supabase
-          .from('users')
-          .update({ has_immunity_shield: true })
-          .eq('id', user.id)
-
-        showToast('success', '🛡️ Immunity shield activated!')
-
-        // Remove after 10 minutes
-        setTimeout(async () => {
+        // Apply coin change
+        if (finalCoins !== 0) {
+          const resultBalance = newBalance + finalCoins
           await supabase
             .from('users')
-            .update({ has_immunity_shield: false })
+            .update({ balance: resultBalance })
             .eq('id', user.id)
-        }, 10 * 60 * 1000)
-      }
 
-      if (card.special === 'double_reward') {
-        await supabase
-          .from('users')
-          .update({ has_double_reward: true })
-          .eq('id', user.id)
+          await supabase.from('transactions').insert({
+            from_user_id: finalCoins < 0 ? user.id : null,
+            to_user_id: finalCoins > 0 ? user.id : null,
+            amount: Math.abs(finalCoins),
+            type: finalCoins > 0 ? 'risk_win' : 'risk_loss',
+            description: drawnCard.message,
+          })
 
-        showToast('success', '🎁 Next mission gives 2x coins!')
-      }
+          updateBalance(resultBalance)
+        }
 
-      if (card.special === 'free_drink') {
-        showToast('success', '🍹 Free drink voucher! Go to the bar!')
-      }
-    } catch (error) {
-      console.error('Error applying special effect:', error)
-    }
-  }
-
-  const handleComplete = async () => {
-    try {
-      // Update session status
-      await supabase
-        .from('risk_sessions')
-        .update({
+        // Create risk session for tracking
+        await supabase.from('risk_sessions').insert({
+          user_id: user.id,
+          level: selectedLevel.cost,
           status: 'completed',
+          card_id: drawnCard.id,
           completed_at: new Date().toISOString(),
         })
-        .eq('id', riskSession.id)
 
-      showToast('success', 'Card completed!')
-      resetGame()
-    } catch (error) {
-      console.error('Error completing card:', error)
-      showToast('error', 'Failed to complete card')
-    }
-  }
-
-  const handleSkip = async () => {
-    if (user.balance < 1) {
-      showToast('error', 'Not enough coins to skip!')
-      return
-    }
-
-    try {
-      // Deduct 1 coin
-      const newBalance = user.balance - 1
-      await supabase
-        .from('users')
-        .update({ balance: newBalance })
-        .eq('id', user.id)
-
-      await supabase.from('transactions').insert({
-        from_user_id: user.id,
-        amount: 1,
-        type: 'risk_skip',
-        description: `Skipped dare: ${drawnCard.name}`,
-      })
-
-      updateBalance(newBalance)
-
-      // Update session
-      await supabase
-        .from('risk_sessions')
-        .update({
-          status: 'declined',
-          declined_action: 'coins',
-          completed_at: new Date().toISOString(),
+        setResult({
+          type: 'coins',
+          ...drawnCard,
         })
-        .eq('id', riskSession.id)
-
-      showToast('info', 'Dare skipped for 1 coin')
-      resetGame()
-    } catch (error) {
-      console.error('Error skipping card:', error)
-      showToast('error', 'Failed to skip card')
-    }
-  }
-
-  const handleDrink = async () => {
-    try {
-      // Create punishment (drink)
-      await supabase.from('assigned_punishments').insert({
-        to_user_id: user.id,
-        punishment_text: `Take a drink (skipped: ${drawnCard.name})`,
-        source: 'risk_decline',
-        status: 'pending',
-        deadline: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
-      })
-
-      // Update session
-      await supabase
-        .from('risk_sessions')
-        .update({
-          status: 'declined',
-          declined_action: 'drink',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', riskSession.id)
-
-      // Create notification
-      await supabase.from('notifications').insert({
-        user_id: user.id,
-        type: 'punishment_assigned',
-        title: '🍺 Drink Punishment',
-        message: `Take a drink for skipping: ${drawnCard.name}. Complete within 30 minutes!`,
-        data: { source: 'risk_decline', card_id: drawnCard.id },
-      })
-
-      showToast('info', 'Drink punishment added to Missions')
-      resetGame()
-    } catch (error) {
-      console.error('Error creating drink punishment:', error)
-      showToast('error', 'Failed to create punishment')
-    }
-  }
-
-  const handleCancel = async () => {
-    if (!riskSession) return
-
-    try {
-      // Cancel session and refund coins
-      await supabase
-        .from('risk_sessions')
-        .update({ status: 'completed' })
-        .eq('id', riskSession.id)
-
-      const refundAmount = selectedLevel?.cost || 0
-      if (refundAmount > 0) {
-        const newBalance = user.balance + refundAmount
-        await supabase
-          .from('users')
-          .update({ balance: newBalance })
-          .eq('id', user.id)
-
-        await supabase.from('transactions').insert({
-          to_user_id: user.id,
-          amount: refundAmount,
-          type: 'refund',
-          description: 'Risk session cancelled',
-        })
-
-        updateBalance(newBalance)
       }
 
-      resetGame()
-      showToast('info', 'Session cancelled')
+      setShowResult(true)
     } catch (error) {
-      console.error('Error cancelling session:', error)
+      console.error('Error in Risk draw:', error)
+      showToast('error', 'Something went wrong!')
+    } finally {
+      setIsDrawing(false)
     }
   }
 
-  const resetGame = () => {
+  const getRandomDigitalCard = (level) => {
+    // Filter cards based on level
+    let pool = [...digitalRiskCards]
+
+    if (level === 1) {
+      // Low risk: more neutral/small rewards, fewer big losses
+      pool = digitalRiskCards.filter(
+        (c) => c.type === 'neutral' || (c.type === 'reward' && c.coins <= 3) || c.id === 'L1'
+      )
+    } else if (level === 2) {
+      // Medium: balanced
+      pool = digitalRiskCards
+    } else if (level === 3) {
+      // High risk: more big rewards and big losses
+      pool = digitalRiskCards.filter(
+        (c) => c.type !== 'neutral' && (c.coins >= 3 || c.coins <= -2)
+      )
+    }
+
+    return pool[Math.floor(Math.random() * pool.length)]
+  }
+
+  const handleReset = () => {
     setSelectedLevel(null)
-    setRiskSession(null)
-    setDrawnCard(null)
-    setStatus('idle')
+    setResult(null)
+    setWonCard(null)
+    setShowResult(false)
   }
 
-  // Render based on status
-  if (status === 'waiting' && riskSession) {
-    return (
-      <>
-        <Header title="The Risk" showBack showBalance />
-        <PageWrapper className="pt-0">
-          <WaitingScreen level={selectedLevel?.cost} onCancel={handleCancel} />
-        </PageWrapper>
-      </>
-    )
-  }
+  if (!user) return null
 
-  if (status === 'assigned' && drawnCard) {
-    return (
-      <>
-        <Header title="The Risk" showBack={false} showBalance />
-        <PageWrapper className="pt-0">
-          <CardAnimation
-            card={drawnCard}
-            onComplete={handleComplete}
-            onSkip={handleSkip}
-            onDrink={handleDrink}
-          />
-        </PageWrapper>
-      </>
-    )
-  }
-
-  // Default: Level selection
   return (
     <>
-      <Header title="The Risk" showBack showBalance />
+      <Header title="Risk Station" showBack showBalance />
 
-      <PageWrapper className="pt-0">
-        <div className="text-center py-8">
-          <span className="text-6xl block mb-4">🎲</span>
-          <h2 className="text-2xl font-bold text-white mb-2">
-            Physical Risk Cards
-          </h2>
-          <p className="text-white/70">
-            Pick a real card from the deck!
+      <PageWrapper withNav className="pt-0">
+        <Card className="mb-6">
+          <p className="text-slate-400 text-sm mb-2">
+            Pick a card, any card... 🎲
           </p>
-        </div>
+          <p className="text-slate-300 text-sm">
+            Choose your risk level and draw a card. Win or lose coins instantly!
+          </p>
+          <p className="text-purple-400 text-xs mt-2">
+            ✨ 10% chance to win a collectible card!
+          </p>
+        </Card>
 
-        {/* Risk levels */}
-        <div className="mb-8">
-          <p className="text-center text-white/60 text-sm mb-4">
-            Choose your risk level:
-          </p>
-          <div className="flex gap-3 justify-center">
-            {riskLevels.map((level) => (
-              <Card
-                key={level.cost}
-                hoverable
-                onClick={() => handleSelectLevel(level)}
-                className={cn(
-                  'w-28 text-center py-4',
-                  user?.balance < level.cost && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                <span className="text-4xl mb-2 block">{level.emoji}</span>
-                <p className="text-yellow-400 text-xl font-bold mb-1">
-                  {level.cost}🪙
-                </p>
-                <p className="text-white text-sm font-medium">{level.label}</p>
-                <p className="text-white/50 text-xs mt-1">{level.description}</p>
-              </Card>
-            ))}
+        {/* Level Selection */}
+        {!selectedLevel && (
+          <div className="space-y-4">
+            <h3 className="text-slate-400 text-sm font-semibold uppercase tracking-wide">
+              Choose Risk Level
+            </h3>
+
+            {riskLevels.map((level) => {
+              const canAfford = user.balance >= level.cost
+
+              return (
+                <Card
+                  key={level.cost}
+                  hoverable={canAfford}
+                  onClick={canAfford ? () => setSelectedLevel(level) : undefined}
+                  className={cn(
+                    'flex items-center gap-4',
+                    !canAfford && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                  <span className="text-4xl">{level.emoji}</span>
+                  <div className="flex-1">
+                    <h4 className="text-white font-semibold">{level.label} Risk</h4>
+                    <p className="text-slate-400 text-sm">{level.description}</p>
+                  </div>
+                  <span className="text-coin-gold font-bold text-lg">{level.cost}🪙</span>
+                </Card>
+              )
+            })}
           </div>
-        </div>
+        )}
 
-        <div className="text-center text-white/50 text-sm space-y-2 px-4">
-          <p>1. Pay coins and pick a physical card</p>
-          <p>2. Show it to the admin</p>
-          <p>3. Admin assigns it in their panel</p>
-          <p>4. Complete the card challenge!</p>
-        </div>
+        {/* Draw Card Interface */}
+        {selectedLevel && !showResult && (
+          <div className="text-center">
+            <div className="mb-6">
+              <div className="w-32 h-32 mx-auto bg-purple-500/20 rounded-3xl flex items-center justify-center mb-4">
+                <span className="text-6xl">{selectedLevel.emoji}</span>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">
+                {selectedLevel.label} Risk
+              </h3>
+              <p className="text-slate-400 text-sm mb-1">{selectedLevel.description}</p>
+              <p className="text-coin-gold font-semibold">Entry: {selectedLevel.cost}🪙</p>
+            </div>
 
-        {/* Back button */}
-        <div className="mt-8 text-center">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/dashboard')}
-          >
-            Back to Dashboard
-          </Button>
-        </div>
+            <div className="space-y-3">
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={handleDraw}
+                loading={isDrawing}
+              >
+                {isDrawing ? 'Drawing...' : 'Draw Card'}
+              </Button>
+              <Button variant="ghost" fullWidth onClick={() => setSelectedLevel(null)}>
+                Back
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Result Modal */}
+        <Modal
+          isOpen={showResult}
+          onClose={handleReset}
+          title={result?.type === 'card' ? '🎉 CARD WON!' : 'Result'}
+        >
+          {result && (
+            <div className="text-center">
+              {result.type === 'card' ? (
+                // Collectible card won!
+                <>
+                  <div
+                    className="w-40 h-40 mx-auto rounded-3xl flex items-center justify-center mb-4"
+                    style={{
+                      backgroundColor: cardRarities[wonCard?.rarity]?.color + '20',
+                      boxShadow: `0 0 30px ${cardRarities[wonCard?.rarity]?.glow}`,
+                    }}
+                  >
+                    <span className="text-8xl animate-bounce">{wonCard?.emoji}</span>
+                  </div>
+
+                  <div
+                    className="inline-block px-4 py-1 rounded-full text-sm font-semibold mb-2"
+                    style={{
+                      backgroundColor: cardRarities[wonCard?.rarity]?.color,
+                      color: 'white',
+                    }}
+                  >
+                    {cardRarities[wonCard?.rarity]?.name}
+                  </div>
+
+                  <h3 className="text-2xl font-bold text-white mb-2">{wonCard?.name}</h3>
+                  <p className="text-slate-300 mb-4">{wonCard?.description}</p>
+
+                  <div className="bg-purple-500/20 rounded-xl p-4 mb-6">
+                    <p className="text-purple-300 text-sm">
+                      🎴 Card added to your collection!
+                    </p>
+                    <p className="text-slate-400 text-xs mt-1">
+                      View in "My Cards" page
+                    </p>
+                  </div>
+                </>
+              ) : (
+                // Coin result
+                <>
+                  <div
+                    className={cn(
+                      'w-32 h-32 mx-auto rounded-full flex items-center justify-center mb-4',
+                      result.type === 'reward' && 'bg-green-500/20',
+                      result.type === 'loss' && 'bg-red-500/20',
+                      result.type === 'neutral' && 'bg-slate-500/20'
+                    )}
+                  >
+                    <span className="text-7xl">{result.emoji}</span>
+                  </div>
+
+                  <h3 className="text-xl font-bold text-white mb-2">{result.message}</h3>
+
+                  {result.coins !== 0 && (
+                    <p
+                      className={cn(
+                        'text-3xl font-bold mb-4',
+                        result.coins > 0 ? 'text-green-400' : 'text-red-400'
+                      )}
+                    >
+                      {result.coins > 0 ? '+' : ''}
+                      {result.coins}🪙
+                    </p>
+                  )}
+
+                  <p className="text-slate-400 text-sm">
+                    New balance: {user.balance}🪙
+                  </p>
+                </>
+              )}
+
+              <Button variant="primary" fullWidth className="mt-6" onClick={handleReset}>
+                Play Again
+              </Button>
+            </div>
+          )}
+        </Modal>
       </PageWrapper>
+
+      <BottomNav />
     </>
   )
 }

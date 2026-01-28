@@ -11,14 +11,12 @@ import { supabase } from '../lib/supabase'
 import { drinks } from '../data/drinks'
 import { punishments, punishmentDifficulties } from '../data/punishments'
 import { favors } from '../data/favors'
-import { abilities, abilityCategories } from '../data/abilities'
 import { generateOrderCode, cn } from '../lib/utils'
 
 const tabs = [
   { id: 'gifts', label: 'Gifts', icon: '🎁' },
   { id: 'punishments', label: 'Punishments', icon: '😈' },
   { id: 'favors', label: 'Favors', icon: '👑' },
-  { id: 'abilities', label: 'Abilities', icon: '⚡' },
 ]
 
 export function Market() {
@@ -53,7 +51,6 @@ export function Market() {
         {activeTab === 'gifts' && <GiftsTab />}
         {activeTab === 'punishments' && <PunishmentsTab />}
         {activeTab === 'favors' && <FavorsTab />}
-        {activeTab === 'abilities' && <AbilitiesTab />}
       </PageWrapper>
     </>
   )
@@ -574,182 +571,3 @@ function FavorsTab() {
   )
 }
 
-// Abilities Tab
-function AbilitiesTab() {
-  const [selectedAbility, setSelectedAbility] = useState(null)
-  const [isPurchasing, setIsPurchasing] = useState(false)
-  const user = useUserStore((state) => state.user)
-  const updateBalance = useUserStore((state) => state.updateBalance)
-  const showToast = useUIStore((state) => state.showToast)
-
-  const handlePurchase = async () => {
-    if (!selectedAbility || user.balance < selectedAbility.price) return
-
-    setIsPurchasing(true)
-    try {
-      // Deduct coins
-      const newBalance = user.balance - selectedAbility.price
-      await supabase
-        .from('users')
-        .update({ balance: newBalance })
-        .eq('id', user.id)
-
-      await supabase.from('transactions').insert({
-        from_user_id: user.id,
-        amount: selectedAbility.price,
-        type: 'ability_purchase',
-        description: `Purchased: ${selectedAbility.name}`,
-      })
-
-      updateBalance(newBalance)
-
-      // Create ability record
-      await supabase.from('user_abilities').insert({
-        user_id: user.id,
-        ability_id: selectedAbility.id,
-        status: 'owned',
-      })
-
-      // Apply special effects immediately for some abilities
-      if (selectedAbility.effect === 'immunity_10min') {
-        await supabase
-          .from('users')
-          .update({ has_immunity_shield: true })
-          .eq('id', user.id)
-
-        showToast('success', '🛡️ Immunity shield activated for 10 minutes!')
-
-        // Remove after 10 minutes
-        setTimeout(async () => {
-          await supabase
-            .from('users')
-            .update({ has_immunity_shield: false })
-            .eq('id', user.id)
-        }, 10 * 60 * 1000)
-      } else if (selectedAbility.effect === 'double_reward') {
-        await supabase
-          .from('users')
-          .update({ has_double_reward: true })
-          .eq('id', user.id)
-        showToast('success', '💎 Next mission gives 2x coins!')
-      } else if (selectedAbility.effect === 'song_request') {
-        // Show input for song request
-        const song = prompt('Enter song title:')
-        if (song) {
-          await supabase.from('song_requests').insert({
-            user_id: user.id,
-            song_title: song,
-            status: 'pending',
-          })
-
-          // Notify admins
-          const { data: admins } = await supabase
-            .from('users')
-            .select('id')
-            .eq('role', 'admin')
-
-          if (admins && admins.length > 0) {
-            const notifications = admins.map(admin => ({
-              user_id: admin.id,
-              type: 'song_requested',
-              title: '🎵 Song Request',
-              message: `${user.name} requested: ${song}`,
-              data: { user_name: user.name, song },
-            }))
-            await supabase.from('notifications').insert(notifications)
-          }
-
-          showToast('success', '🎵 Song request sent!')
-        }
-      } else {
-        showToast('success', `${selectedAbility.name} purchased!`)
-      }
-
-      setSelectedAbility(null)
-    } catch (error) {
-      console.error('Error purchasing ability:', error)
-      showToast('error', 'Failed to purchase')
-    } finally {
-      setIsPurchasing(false)
-    }
-  }
-
-  return (
-    <>
-      <p className="text-slate-400 text-sm mb-4">
-        Buy special ability cards ⚡
-      </p>
-
-      <div className="space-y-2">
-        {abilities.map((ability) => {
-          const canAfford = ability.price <= user.balance
-          const category = abilityCategories.find(c => c.id === ability.category)
-
-          return (
-            <Card
-              key={ability.id}
-              hoverable={canAfford}
-              onClick={canAfford ? () => setSelectedAbility(ability) : undefined}
-              className={cn(
-                'flex items-center gap-4',
-                !canAfford && 'opacity-50'
-              )}
-            >
-              <span className="text-4xl">{ability.emoji}</span>
-              <div className="flex-1">
-                <h4 className="text-white font-medium">{ability.name}</h4>
-                <p className="text-slate-400 text-sm">{ability.description}</p>
-                {category && (
-                  <Badge
-                    size="sm"
-                    className="mt-1"
-                    style={{ backgroundColor: category.color }}
-                  >
-                    {category.name}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-coin-gold font-bold">{ability.price}🪙</span>
-            </Card>
-          )
-        })}
-      </div>
-
-      {/* Purchase Confirmation Modal */}
-      <Modal
-        isOpen={!!selectedAbility}
-        onClose={() => setSelectedAbility(null)}
-        title="Purchase Ability"
-      >
-        {selectedAbility && (
-          <div className="text-center">
-            <span className="text-6xl block mb-4">{selectedAbility.emoji}</span>
-            <h3 className="text-xl font-semibold text-white mb-2">
-              {selectedAbility.name}
-            </h3>
-            <p className="text-slate-400 mb-4">{selectedAbility.description}</p>
-            <p className="text-coin-gold font-bold text-2xl mb-6">{selectedAbility.price}🪙</p>
-
-            <div className="flex flex-col gap-3">
-              <Button
-                variant="primary"
-                fullWidth
-                onClick={handlePurchase}
-                loading={isPurchasing}
-              >
-                Purchase
-              </Button>
-              <Button
-                variant="ghost"
-                fullWidth
-                onClick={() => setSelectedAbility(null)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </>
-  )
-}

@@ -25,7 +25,7 @@ export async function checkUserExists(name) {
 }
 
 // Register new user with PIN
-export async function registerUser(name, pin) {
+export async function registerUser(name, pin, traitId = null) {
   const pinHash = hashPIN(pin)
   const qrCode = crypto.randomUUID()
 
@@ -54,6 +54,42 @@ export async function registerUser(name, pin) {
     type: 'registration',
     description: 'Welcome to Sasha Bank!',
   })
+
+  // If trait selected, create guest trait record and assign missions
+  if (traitId) {
+    // Dynamically import to avoid circular dependencies
+    const { getMissionsForTrait, getTraitById } = await import('../data/traits')
+    const trait = getTraitById(traitId)
+
+    if (trait) {
+      // Create guest trait record
+      await supabase.from('guest_traits').insert({
+        user_id: user.id,
+        trait_category: traitId,
+        trait_emoji: trait.emoji,
+        trait_description: trait.description,
+      })
+
+      // Get and assign trait missions
+      const traitMissions = getMissionsForTrait(traitId)
+
+      if (traitMissions.length > 0) {
+        const missionsToInsert = traitMissions.map((mission) => ({
+          user_id: user.id,
+          title: mission.title,
+          description: mission.description,
+          reward: mission.reward,
+          verification: mission.verification,
+          requires_confirmation: mission.requires_confirmation,
+          trait_category: traitId,
+          type: 'main',
+          status: 'active',
+        }))
+
+        await supabase.from('user_missions').insert(missionsToInsert)
+      }
+    }
+  }
 
   return user
 }

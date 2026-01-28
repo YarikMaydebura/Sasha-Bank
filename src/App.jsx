@@ -13,16 +13,18 @@ import {
   Market,
   Trivia,
   Risk,
-  Box,
   Lottery,
+  Poker,
+  Photos,
   Missions,
   Trade,
-  Games,
   History,
   Leaderboard,
   Profile,
   Scan,
   Notifications,
+  MyCards,
+  MissionConfirm,
   AdminDashboard,
 } from './pages'
 
@@ -120,18 +122,26 @@ function App() {
           }
         />
         <Route
-          path="/box"
-          element={
-            <ProtectedRoute>
-              <Box />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/lottery"
           element={
             <ProtectedRoute>
               <Lottery />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/poker"
+          element={
+            <ProtectedRoute>
+              <Poker />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/photos"
+          element={
+            <ProtectedRoute>
+              <Photos />
             </ProtectedRoute>
           }
         />
@@ -148,14 +158,6 @@ function App() {
           element={
             <ProtectedRoute>
               <Trade />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/games"
-          element={
-            <ProtectedRoute>
-              <Games />
             </ProtectedRoute>
           }
         />
@@ -196,6 +198,22 @@ function App() {
           element={
             <ProtectedRoute>
               <Notifications />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-cards"
+          element={
+            <ProtectedRoute>
+              <MyCards />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mission-confirm/:missionId/:userId"
+          element={
+            <ProtectedRoute>
+              <MissionConfirm />
             </ProtectedRoute>
           }
         />

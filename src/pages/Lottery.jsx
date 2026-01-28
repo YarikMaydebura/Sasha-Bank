@@ -119,15 +119,72 @@ export function Lottery() {
           <div className="h-0.5 w-16 bg-pastel-purple mx-auto my-4" />
         </div>
 
+        {/* Important Info */}
+        <Card className="mb-6 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-500/30">
+          <div className="flex items-start gap-3 mb-4">
+            <span className="text-3xl">🎪</span>
+            <div>
+              <h3 className="text-white font-semibold mb-1">
+                Physical Bucket Draw!
+              </h3>
+              <p className="text-slate-300 text-sm">
+                All ticket numbers go into a physical bucket. At the end of the party, winners will be drawn live!
+              </p>
+            </div>
+          </div>
+        </Card>
+
         {/* Prizes info */}
         <Card className="mb-6">
-          <h3 className="text-white font-semibold mb-3">🎁 Prizes include:</h3>
-          <ul className="text-slate-300 space-y-2">
-            <li>• Bonus coins</li>
-            <li>• Physical prizes</li>
-            <li>• Golden tickets</li>
-            <li>• Funny tasks</li>
-          </ul>
+          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+            <span className="text-xl">🎁</span>
+            Prize Pool
+          </h3>
+          <div className="space-y-3">
+            {/* Coin Prizes */}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">💰</span>
+                <span className="text-slate-300 font-medium">Bonus Coins</span>
+              </div>
+              <div className="text-slate-400 text-sm ml-7">
+                +10, +20, +50, or +100 coins
+              </div>
+            </div>
+
+            {/* Card Prizes */}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">🃏</span>
+                <span className="text-slate-300 font-medium">Collectible Cards</span>
+              </div>
+              <div className="text-slate-400 text-sm ml-7">
+                Random rarity: Common (50%), Rare (30%), Epic (15%), Legendary (5%)
+              </div>
+            </div>
+
+            {/* Physical Prizes */}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">🎁</span>
+                <span className="text-slate-300 font-medium">Physical Prizes</span>
+              </div>
+              <div className="text-slate-400 text-sm ml-7">
+                Drinks, snacks, party favors, merchandise
+              </div>
+            </div>
+
+            {/* Punishments */}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">😈</span>
+                <span className="text-slate-300 font-medium">Fun Challenges</span>
+              </div>
+              <div className="text-slate-400 text-sm ml-7">
+                20 pushups, sing a song, Bean Boozle candy, take a shot
+              </div>
+            </div>
+          </div>
         </Card>
 
         {/* Buy ticket */}
@@ -195,9 +252,14 @@ export function Lottery() {
           )}
         </div>
 
-        <p className="text-center text-slate-500 text-sm mt-6">
-          Drawing happens during the party! 🎉
-        </p>
+        <Card className="mt-6 bg-purple-500/10 border-purple-500/30 text-center">
+          <p className="text-purple-300 font-medium mb-2">
+            🎉 Live Draw at End of Party!
+          </p>
+          <p className="text-slate-400 text-sm">
+            All ticket numbers will be placed in a physical bucket. Winners will be drawn live during the final celebration!
+          </p>
+        </Card>
       </PageWrapper>
     </>
   )
