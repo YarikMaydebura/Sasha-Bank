@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react'
 import { Card } from '../ui/Card'
-import { Button } from '../ui/Button'
+import { Badge } from '../ui/Badge'
 import { Spinner } from '../ui/Spinner'
 import { supabase } from '../../lib/supabase'
-import { physicalRiskCards, cardTypeColors } from '../../data/physicalRiskCards'
 
 export function AdminRiskPanel() {
-  const [waitingSessions, setWaitingSessions] = useState([])
+  const [recentSessions, setRecentSessions] = useState([])
+  const [stats, setStats] = useState({ total: 0, wins: 0, losses: 0, cardsWon: 0 })
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedSession, setSelectedSession] = useState(null)
-  const [selectedCard, setSelectedCard] = useState(null)
 
-  // Fetch waiting sessions
   useEffect(() => {
-    fetchWaitingSessions()
+    fetchRiskData()
 
     // Subscribe to new sessions
     const channel = supabase
@@ -26,7 +23,7 @@ export function AdminRiskPanel() {
           table: 'risk_sessions',
         },
         () => {
-          fetchWaitingSessions()
+          fetchRiskData()
         }
       )
       .subscribe()
@@ -36,63 +33,35 @@ export function AdminRiskPanel() {
     }
   }, [])
 
-  const fetchWaitingSessions = async () => {
+  const fetchRiskData = async () => {
     try {
-      const { data, error } = await supabase
+      // Get recent sessions
+      const { data: sessions, error: sessionsError } = await supabase
         .from('risk_sessions')
         .select(`
           *,
-          users!inner(id, name, balance)
+          users!inner(id, name)
         `)
-        .eq('status', 'waiting')
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
+        .limit(20)
 
-      if (error) throw error
+      if (sessionsError) throw sessionsError
 
-      setWaitingSessions(data || [])
+      setRecentSessions(sessions || [])
+
+      // Calculate stats
+      const total = sessions?.length || 0
+      const wins = sessions?.filter((s) => s.card_result?.won === true).length || 0
+      const losses = total - wins
+      const cardsWon = sessions?.filter((s) => s.card_reward_id).length || 0
+
+      setStats({ total, wins, losses, cardsWon })
     } catch (error) {
-      console.error('Error fetching risk sessions:', error)
+      console.error('Error fetching risk data:', error)
     } finally {
       setIsLoading(false)
     }
   }
-
-  const handleAssignCard = async () => {
-    if (!selectedSession || !selectedCard) return
-
-    try {
-      // Update session with assigned card
-      const { error } = await supabase
-        .from('risk_sessions')
-        .update({
-          status: 'assigned',
-          card_id: selectedCard.id,
-          card_result: {
-            id: selectedCard.id,
-            name: selectedCard.name,
-            type: selectedCard.type,
-            description: selectedCard.description,
-          },
-        })
-        .eq('id', selectedSession.id)
-
-      if (error) throw error
-
-      // Reset selection
-      setSelectedSession(null)
-      setSelectedCard(null)
-
-      // Refresh list
-      fetchWaitingSessions()
-    } catch (error) {
-      console.error('Error assigning card:', error)
-      alert('Failed to assign card')
-    }
-  }
-
-  const levelCards = selectedSession
-    ? physicalRiskCards.filter(card => card.level === selectedSession.level)
-    : []
 
   if (isLoading) {
     return (
@@ -104,115 +73,75 @@ export function AdminRiskPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Waiting Sessions */}
-      <div>
-        <h3 className="text-lg font-bold text-white mb-4">
-          Waiting for Cards ({waitingSessions.length})
-        </h3>
+      {/* Info Banner */}
+      <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/30">
+        <div className="flex items-start gap-3">
+          <span className="text-3xl">🤖</span>
+          <div>
+            <h3 className="text-white font-semibold mb-1">100% Automated Risk Station</h3>
+            <p className="text-slate-300 text-sm">
+              Risk games are fully automated with instant digital card results. No admin intervention required!
+            </p>
+          </div>
+        </div>
+      </Card>
 
-        {waitingSessions.length === 0 ? (
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card className="text-center">
+          <div className="text-3xl font-bold text-white">{stats.total}</div>
+          <div className="text-slate-400 text-xs mt-1">Total Games</div>
+        </Card>
+        <Card className="text-center">
+          <div className="text-3xl font-bold text-green-400">{stats.wins}</div>
+          <div className="text-slate-400 text-xs mt-1">Wins</div>
+        </Card>
+        <Card className="text-center">
+          <div className="text-3xl font-bold text-red-400">{stats.losses}</div>
+          <div className="text-slate-400 text-xs mt-1">Losses</div>
+        </Card>
+        <Card className="text-center">
+          <div className="text-3xl font-bold text-purple-400">{stats.cardsWon}</div>
+          <div className="text-slate-400 text-xs mt-1">Cards Won</div>
+        </Card>
+      </div>
+
+      {/* Recent Activity */}
+      <div>
+        <h3 className="text-lg font-bold text-white mb-4">Recent Activity</h3>
+
+        {recentSessions.length === 0 ? (
           <Card className="text-center py-8">
-            <p className="text-white/60">No one is waiting for cards</p>
+            <p className="text-white/60">No Risk activity yet</p>
           </Card>
         ) : (
-          <div className="space-y-3">
-            {waitingSessions.map((session) => (
-              <Card
-                key={session.id}
-                hoverable
-                onClick={() => setSelectedSession(session)}
-                className={`p-4 cursor-pointer transition-all ${
-                  selectedSession?.id === session.id
-                    ? 'border-2 border-yellow-500 bg-yellow-500/10'
-                    : 'border-white/10'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white font-bold text-lg">
-                      {session.users.name}
-                    </p>
-                    <p className="text-white/60 text-sm">
-                      Level {session.level} • {session.users.balance} coins
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-yellow-400 text-2xl">⏳</span>
-                  </div>
+          <div className="space-y-2">
+            {recentSessions.slice(0, 10).map((session) => (
+              <Card key={session.id} className="flex items-center justify-between">
+                <div>
+                  <p className="text-white font-medium">{session.users?.name}</p>
+                  <p className="text-slate-400 text-sm">
+                    Level {session.level} • {new Date(session.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {session.card_reward_id && (
+                    <Badge variant="purple" size="sm">
+                      🃏 Card Won
+                    </Badge>
+                  )}
+                  <Badge
+                    variant={session.card_result?.won ? 'success' : 'secondary'}
+                    size="sm"
+                  >
+                    {session.card_result?.won ? '✅ Win' : '❌ Loss'}
+                  </Badge>
                 </div>
               </Card>
             ))}
           </div>
         )}
       </div>
-
-      {/* Card Selection */}
-      {selectedSession && (
-        <div>
-          <h3 className="text-lg font-bold text-white mb-4">
-            Select Card for {selectedSession.users.name} (Level {selectedSession.level})
-          </h3>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
-            {levelCards.map((card) => {
-              const colors = cardTypeColors[card.type] || cardTypeColors.reward
-
-              return (
-                <Card
-                  key={card.id}
-                  hoverable
-                  onClick={() => setSelectedCard(card)}
-                  className={`p-3 cursor-pointer transition-all ${
-                    selectedCard?.id === card.id
-                      ? `border-2 ${colors.border} ${colors.bg}`
-                      : 'border-white/10'
-                  }`}
-                >
-                  <div className="text-center">
-                    <span className="text-4xl block mb-2">{card.emoji}</span>
-                    <p className={`text-xs font-bold mb-1 ${colors.text}`}>
-                      {card.id}
-                    </p>
-                    <p className="text-white font-medium text-sm mb-1">
-                      {card.name}
-                    </p>
-                    <p className="text-white/60 text-xs line-clamp-2">
-                      {card.description}
-                    </p>
-                    {card.coin_change !== undefined && card.coin_change !== 0 && (
-                      <p className={`text-sm font-bold mt-1 ${colors.text}`}>
-                        {card.coin_change > 0 ? '+' : ''}{card.coin_change}🪙
-                      </p>
-                    )}
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
-
-          {selectedCard && (
-            <div className="flex gap-3">
-              <Button
-                variant="primary"
-                fullWidth
-                onClick={handleAssignCard}
-                className="py-3"
-              >
-                Assign {selectedCard.name} to {selectedSession.users.name}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSelectedSession(null)
-                  setSelectedCard(null)
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
