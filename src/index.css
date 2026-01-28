@@ -104,6 +104,79 @@
   .animate-fade-in {
     animation: fadeIn 0.5s ease-out;
   }
+
+  /* 3D Card Flip Animation with rotation */
+  @keyframes cardFlip3D {
+    0% {
+      transform: perspective(1000px) rotateY(0deg) scale(0.8);
+      opacity: 0;
+    }
+    50% {
+      transform: perspective(1000px) rotateY(180deg) scale(1.1);
+      opacity: 1;
+    }
+    100% {
+      transform: perspective(1000px) rotateY(360deg) scale(1);
+      opacity: 1;
+    }
+  }
+
+  .animate-card-flip {
+    animation: cardFlip3D 1.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+
+  /* Rarity Glow Animations */
+  @keyframes glowCommon {
+    0%, 100% {
+      filter: drop-shadow(0 0 10px rgba(156, 163, 175, 0.3));
+    }
+    50% {
+      filter: drop-shadow(0 0 20px rgba(156, 163, 175, 0.5));
+    }
+  }
+
+  @keyframes glowRare {
+    0%, 100% {
+      filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.4));
+    }
+    50% {
+      filter: drop-shadow(0 0 30px rgba(59, 130, 246, 0.6));
+    }
+  }
+
+  @keyframes glowEpic {
+    0%, 100% {
+      filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.5));
+    }
+    50% {
+      filter: drop-shadow(0 0 40px rgba(139, 92, 246, 0.8));
+    }
+  }
+
+  @keyframes glowLegendary {
+    0%, 100% {
+      filter: drop-shadow(0 0 25px rgba(245, 158, 11, 0.6));
+    }
+    50% {
+      filter: drop-shadow(0 0 50px rgba(245, 158, 11, 0.9));
+    }
+  }
+
+  .glow-common {
+    animation: glowCommon 2s infinite;
+  }
+
+  .glow-rare {
+    animation: glowRare 2s infinite;
+  }
+
+  .glow-epic {
+    animation: glowEpic 2s infinite;
+  }
+
+  .glow-legendary {
+    animation: glowLegendary 2s infinite;
+  }
 }
 
 @layer utilities {

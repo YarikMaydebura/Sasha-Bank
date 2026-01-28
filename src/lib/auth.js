@@ -76,14 +76,14 @@ export async function registerUser(name, pin, traitId = null) {
       if (traitMissions.length > 0) {
         const missionsToInsert = traitMissions.map((mission) => ({
           user_id: user.id,
-          title: mission.title,
-          description: mission.description,
+          template_id: mission.id,
+          generated_text: mission.title,
           reward: mission.reward,
+          difficulty: mission.difficulty || 'medium',
           verification: mission.verification,
-          requires_confirmation: mission.requires_confirmation,
+          requires_confirmation: mission.requires_confirmation || false,
           trait_category: traitId,
-          type: 'main',
-          status: 'active',
+          status: 'assigned',
         }))
 
         await supabase.from('user_missions').insert(missionsToInsert)

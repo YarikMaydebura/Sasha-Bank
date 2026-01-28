@@ -10,6 +10,7 @@ import { useUIStore } from '../stores/uiStore'
 import { supabase } from '../lib/supabase'
 import { getRandomCard, cardRarities } from '../data/cards'
 import { cn } from '../lib/utils'
+import { checkAndApplyBailout } from '../lib/balanceProtection'
 
 const riskLevels = [
   { cost: 1, label: 'Low', description: 'Small risks, small rewards', emoji: '😊' },
@@ -19,19 +20,19 @@ const riskLevels = [
 
 // Digital risk cards (automated, instant results)
 const digitalRiskCards = [
-  // Rewards
-  { id: 'R1', type: 'reward', coins: 2, emoji: '🎁', message: 'Lucky! +2 coins' },
-  { id: 'R2', type: 'reward', coins: 3, emoji: '💰', message: 'Nice! +3 coins' },
-  { id: 'R3', type: 'reward', coins: 5, emoji: '💎', message: 'Jackpot! +5 coins' },
-  { id: 'R4', type: 'reward', coins: 4, emoji: '✨', message: 'Great! +4 coins' },
-  { id: 'R5', type: 'reward', coins: 1, emoji: '🪙', message: 'Small win +1 coin' },
+  // Rewards (buffed by +2 coins)
+  { id: 'R1', type: 'reward', coins: 4, emoji: '🎁', message: 'Lucky! +4 coins' },
+  { id: 'R2', type: 'reward', coins: 5, emoji: '💰', message: 'Nice! +5 coins' },
+  { id: 'R3', type: 'reward', coins: 7, emoji: '💎', message: 'Jackpot! +7 coins' },
+  { id: 'R4', type: 'reward', coins: 6, emoji: '✨', message: 'Great! +6 coins' },
+  { id: 'R5', type: 'reward', coins: 3, emoji: '🪙', message: 'Small win +3 coins' },
 
-  // Losses
+  // Losses (unchanged)
   { id: 'L1', type: 'loss', coins: -1, emoji: '😅', message: 'Close call! -1 coin' },
   { id: 'L2', type: 'loss', coins: -2, emoji: '😬', message: 'Oops! -2 coins' },
   { id: 'L3', type: 'loss', coins: -3, emoji: '💀', message: 'Brutal! -3 coins' },
 
-  // Neutral
+  // Neutral (unchanged)
   { id: 'N1', type: 'neutral', coins: 0, emoji: '😐', message: 'Nothing happens' },
   { id: 'N2', type: 'neutral', coins: 0, emoji: '🤷', message: 'Break even' },
 ]
@@ -70,13 +71,27 @@ export function Risk() {
         description: `Risk station entry (Level ${selectedLevel.cost})`,
       })
 
-      updateBalance(newBalance)
+      // Check if bailout needed after entry cost
+      const { bailoutApplied, newBalance: balanceAfterEntry } = await checkAndApplyBailout(
+        user.id,
+        newBalance
+      )
+
+      // Track current balance after potential bailout
+      const currentBalance = bailoutApplied ? balanceAfterEntry : newBalance
+
+      if (bailoutApplied) {
+        updateBalance(balanceAfterEntry)
+        showToast('info', '🆘 Emergency bailout! +10 coins')
+      } else {
+        updateBalance(newBalance)
+      }
 
       // Simulate card draw animation delay
       await new Promise((resolve) => setTimeout(resolve, 1500))
 
-      // 10% chance to win a collectible card instead of coins
-      const wonCollectibleCard = Math.random() < 0.10
+      // 25% chance to win a collectible card instead of coins
+      const wonCollectibleCard = Math.random() < 0.25
 
       if (wonCollectibleCard) {
         // User won a collectible card!
@@ -118,7 +133,7 @@ export function Risk() {
 
         // Apply coin change
         if (finalCoins !== 0) {
-          const resultBalance = newBalance + finalCoins
+          const resultBalance = currentBalance + finalCoins
           await supabase
             .from('users')
             .update({ balance: resultBalance })
@@ -132,7 +147,18 @@ export function Risk() {
             description: drawnCard.message,
           })
 
-          updateBalance(resultBalance)
+          // Check if bailout needed after balance update
+          const { bailoutApplied, newBalance: finalBalance } = await checkAndApplyBailout(
+            user.id,
+            resultBalance
+          )
+
+          if (bailoutApplied) {
+            updateBalance(finalBalance)
+            showToast('info', '🆘 Emergency bailout applied! +10 coins')
+          } else {
+            updateBalance(resultBalance)
+          }
         }
 
         // Create risk session for tracking
@@ -287,7 +313,17 @@ export function Risk() {
                       boxShadow: `0 0 30px ${cardRarities[wonCard?.rarity]?.glow}`,
                     }}
                   >
-                    <span className="text-8xl animate-bounce">{wonCard?.emoji}</span>
+                    <span
+                      className={cn(
+                        'text-8xl animate-card-flip',
+                        wonCard?.rarity === 'common' && 'glow-common',
+                        wonCard?.rarity === 'rare' && 'glow-rare',
+                        wonCard?.rarity === 'epic' && 'glow-epic',
+                        wonCard?.rarity === 'legendary' && 'glow-legendary'
+                      )}
+                    >
+                      {wonCard?.emoji}
+                    </span>
                   </div>
 
                   <div
