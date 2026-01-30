@@ -332,49 +332,80 @@ export function AdminDashboard() {
         )}
       </PageWrapper>
 
-      {/* Adjust Coins Modal */}
+      {/* Adjust Coins Modal - V3.0 Enhanced with User Selector */}
       <Modal
         isOpen={!!selectedUser}
         onClose={() => {
           setSelectedUser(null)
           setCoinAdjust(0)
         }}
-        title={`Adjust ${selectedUser?.name}'s Coins`}
+        title={selectedUser?.id === 'award' || selectedUser?.id === 'deduct'
+          ? (selectedUser.id === 'award' ? '➕ Award Coins' : '➖ Deduct Coins')
+          : `Adjust ${selectedUser?.name}'s Coins`}
       >
         {selectedUser && (
           <div>
-            <p className="text-slate-400 mb-4">
-              Current balance: {selectedUser.balance}🪙
-            </p>
+            {/* User Selector (for Award/Deduct quick buttons) */}
+            {(selectedUser.id === 'award' || selectedUser.id === 'deduct') ? (
+              <div className="mb-4">
+                <label className="text-slate-400 text-sm mb-2 block">Select User</label>
+                <select
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                  value=""
+                  onChange={(e) => {
+                    const user = users.find(u => u.id === e.target.value)
+                    if (user) {
+                      setSelectedUser({
+                        ...user,
+                        _action: selectedUser.id // remember if award or deduct
+                      })
+                    }
+                  }}
+                >
+                  <option value="">Select a guest...</option>
+                  {users.filter(u => !u.is_admin).map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} ({user.balance}🪙)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <>
+                <p className="text-slate-400 mb-4">
+                  Current balance: {selectedUser.balance}🪙
+                </p>
 
-            <Input
-              label="Amount (positive to add, negative to deduct)"
-              type="number"
-              value={coinAdjust}
-              onChange={(e) => setCoinAdjust(parseInt(e.target.value) || 0)}
-              placeholder="e.g., 5 or -3"
-            />
+                <Input
+                  label="Amount (positive to add, negative to deduct)"
+                  type="number"
+                  value={coinAdjust}
+                  onChange={(e) => setCoinAdjust(parseInt(e.target.value) || 0)}
+                  placeholder="e.g., 5 or -3"
+                />
 
-            <div className="flex gap-3 mt-4">
-              <Button
-                variant="primary"
-                fullWidth
-                onClick={handleAdjustCoins}
-                disabled={coinAdjust === 0}
-              >
-                Confirm
-              </Button>
-              <Button
-                variant="ghost"
-                fullWidth
-                onClick={() => {
-                  setSelectedUser(null)
-                  setCoinAdjust(0)
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
+                <div className="flex gap-3 mt-4">
+                  <Button
+                    variant="primary"
+                    fullWidth
+                    onClick={handleAdjustCoins}
+                    disabled={coinAdjust === 0}
+                  >
+                    Confirm
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    fullWidth
+                    onClick={() => {
+                      setSelectedUser(null)
+                      setCoinAdjust(0)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Modal>

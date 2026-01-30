@@ -63,11 +63,11 @@ export function PhotoGalleryPanel() {
     setIsSendingPrompt(true)
 
     try {
-      // Get all non-admin users
+      // Get all non-admin users (V3.0 fix: use is_admin field instead of role)
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select('id')
-        .neq('role', 'admin')
+        .eq('is_admin', false)
 
       if (usersError) throw usersError
 
