@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
@@ -10,6 +11,7 @@ import { cn } from '../lib/utils'
 const BUY_IN_OPTIONS = [1, 2, 3, 5, 10]
 
 export default function GroupGames() {
+  const navigate = useNavigate()
   const { user, updateBalance } = useUserStore()
   const { showToast } = useUIStore()
   const [games, setGames] = useState([])
@@ -48,7 +50,7 @@ export default function GroupGames() {
           user:user_id(id, name)
         )
       `)
-      .in('status', ['open', 'started'])
+      .in('status', ['waiting', 'playing'])
       .order('created_at', { ascending: false })
 
     if (!error) {
@@ -78,7 +80,7 @@ export default function GroupGames() {
         buy_in: newGame.buy_in,
         creator_id: user.id,
         pot: newGame.buy_in,
-        status: 'open'
+        status: 'waiting'
       })
       .select()
       .single()
@@ -113,6 +115,9 @@ export default function GroupGames() {
     setShowCreateModal(false)
     setNewGame({ name: '', buy_in: 3 })
     setCreating(false)
+
+    // V3.0: Navigate to game room
+    navigate(`/group-games/${game.id}`)
   }
 
   async function joinGame(game) {
@@ -153,6 +158,9 @@ export default function GroupGames() {
     })
 
     showToast('success', 'Joined game!')
+
+    // V3.0: Navigate to game room
+    navigate(`/group-games/${game.id}`)
   }
 
   async function markReady(game) {
@@ -168,7 +176,7 @@ export default function GroupGames() {
   }
 
   async function startGame(game) {
-    await supabase.from('group_games').update({ status: 'started' }).eq('id', game.id)
+    await supabase.from('group_games').update({ status: 'playing' }).eq('id', game.id)
     showToast('success', 'Game started! Play in person, then pick winner.')
   }
 
@@ -243,7 +251,14 @@ export default function GroupGames() {
         ) : (
           <div className="space-y-4">
             {games.map((game) => (
-              <Card key={game.id} className="p-4">
+              <Card
+                key={game.id}
+                className={cn(
+                  'p-4',
+                  hasJoined(game) && 'cursor-pointer hover:border-purple-500/50 transition-colors'
+                )}
+                onClick={() => hasJoined(game) && navigate(`/group-games/${game.id}`)}
+              >
                 {/* Game Header */}
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -271,11 +286,11 @@ export default function GroupGames() {
                   <div
                     className={cn(
                       'px-3 py-1 rounded-lg text-xs font-semibold',
-                      game.status === 'open' && 'bg-green-500/20 text-green-400',
-                      game.status === 'started' && 'bg-yellow-500/20 text-yellow-400'
+                      game.status === 'waiting' && 'bg-green-500/20 text-green-400',
+                      game.status === 'playing' && 'bg-yellow-500/20 text-yellow-400'
                     )}
                   >
-                    {game.status === 'open' ? 'Open' : 'In Progress'}
+                    {game.status === 'waiting' ? 'Open' : 'In Progress'}
                   </div>
                 </div>
 
@@ -302,7 +317,7 @@ export default function GroupGames() {
 
                 {/* Actions */}
                 <div className="flex gap-2">
-                  {game.status === 'open' && (
+                  {game.status === 'waiting' && (
                     <>
                       {!hasJoined(game) ? (
                         <Button onClick={() => joinGame(game)} className="flex-1">
@@ -326,7 +341,7 @@ export default function GroupGames() {
                     </>
                   )}
 
-                  {game.status === 'started' && isCreator(game) && (
+                  {game.status === 'playing' && isCreator(game) && (
                     <div className="w-full">
                       <p className="text-slate-400 text-sm mb-2">Select winner:</p>
                       <div className="flex flex-wrap gap-2">
@@ -344,7 +359,7 @@ export default function GroupGames() {
                     </div>
                   )}
 
-                  {game.status === 'started' && !isCreator(game) && (
+                  {game.status === 'playing' && !isCreator(game) && (
                     <p className="text-yellow-400 text-sm italic">
                       Game in progress... waiting for winner selection
                     </p>

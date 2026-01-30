@@ -1,59 +1,39 @@
 import { useState, useEffect } from 'react'
-import { PageWrapper } from '../components/layout/PageWrapper'
-import { Header } from '../components/layout/Header'
-import { Card } from '../components/ui/Card'
-import { Button } from '../components/ui/Button'
-import { Badge } from '../components/ui/Badge'
-import { Spinner } from '../components/ui/Spinner'
-import { Modal } from '../components/ui/Modal'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
+import { PageWrapper } from '../components/layout/PageWrapper'
+import { Card } from '../components/ui/Card'
+import { Button } from '../components/ui/Button'
 import { cn } from '../lib/utils'
 
+const MIN_BUY_IN_OPTIONS = [3, 5, 10, 20]
+
+/**
+ * Poker - V3.0
+ * User-created poker tables (not admin-controlled)
+ * Similar to GroupGames but for poker
+ */
 export function Poker() {
-  const [currentRound, setCurrentRound] = useState(null)
-  const [players, setPlayers] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isJoining, setIsJoining] = useState(false)
-  const [isAddingChips, setIsAddingChips] = useState(false)
-  const [isFolding, setIsFolding] = useState(false)
-  const [showBuyInModal, setShowBuyInModal] = useState(false)
-  const [showAddChipsModal, setShowAddChipsModal] = useState(false)
-  const [selectedAmount, setSelectedAmount] = useState(3)
+  const navigate = useNavigate()
+  const { user, updateBalance } = useUserStore()
+  const { showToast } = useUIStore()
+  const [tables, setTables] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [newTable, setNewTable] = useState({ name: '', min_buy_in: 5, my_buy_in: 5 })
+  const [creating, setCreating] = useState(false)
 
-  const user = useUserStore((state) => state.user)
-  const updateBalance = useUserStore((state) => state.updateBalance)
-  const showToast = useUIStore((state) => state.showToast)
-
+  // Load tables
   useEffect(() => {
-    fetchPokerData()
+    loadTables()
 
-    // Real-time subscription
+    // Subscribe to changes
     const channel = supabase
-      .channel('poker-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'poker_rounds',
-        },
-        () => {
-          fetchPokerData()
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'poker_players',
-        },
-        () => {
-          fetchPokerData()
-        }
-      )
+      .channel('poker_tables')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'poker_tables' }, loadTables)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'poker_players' }, loadTables)
       .subscribe()
 
     return () => {
@@ -61,467 +41,361 @@ export function Poker() {
     }
   }, [])
 
-  const fetchPokerData = async () => {
-    try {
-      // Get current active round
-      const { data: round, error: roundError } = await supabase
-        .from('poker_rounds')
-        .select('*')
-        .in('status', ['open', 'locked', 'playing'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
+  async function loadTables() {
+    const { data, error } = await supabase
+      .from('poker_tables')
+      .select(`
+        *,
+        creator:creator_id(id, name),
+        winner:winner_id(id, name),
+        players:poker_players(
+          id,
+          user_id,
+          buy_in,
+          stack,
+          ready,
+          folded,
+          user:user_id(id, name)
+        )
+      `)
+      .in('status', ['waiting', 'playing'])
+      .order('created_at', { ascending: false })
 
-      if (roundError && roundError.code !== 'PGRST116') throw roundError
-
-      setCurrentRound(round || null)
-
-      if (round) {
-        // Get players in this round
-        const { data: playersData, error: playersError } = await supabase
-          .from('poker_players')
-          .select(`
-            *,
-            users (id, name)
-          `)
-          .eq('round_id', round.id)
-          .order('joined_at', { ascending: true })
-
-        if (playersError) throw playersError
-        setPlayers(playersData || [])
-      } else {
-        setPlayers([])
-      }
-    } catch (error) {
-      console.error('Error fetching poker data:', error)
-    } finally {
-      setIsLoading(false)
+    if (!error) {
+      setTables(data || [])
     }
+    setLoading(false)
   }
 
-  const myPlayer = players.find((p) => p.user_id === user?.id)
-  const canJoin = currentRound?.status === 'open' && !myPlayer && (user?.balance || 0) >= (currentRound?.min_buy_in || 3)
-  const canAddChips = myPlayer && myPlayer.status === 'playing' && currentRound?.status !== 'ended'
-  const canFold = myPlayer && myPlayer.status === 'playing' && currentRound?.status === 'playing'
+  async function createTable() {
+    if (!newTable.name.trim()) {
+      showToast('error', 'Please enter a table name')
+      return
+    }
 
-  const handleJoinRound = async () => {
-    if (!user || !currentRound) return
+    if (newTable.my_buy_in < newTable.min_buy_in) {
+      showToast('error', `Your buy-in must be at least ${newTable.min_buy_in} coins`)
+      return
+    }
 
-    if (user.balance < selectedAmount) {
+    if (user.balance < newTable.my_buy_in) {
       showToast('error', 'Not enough coins!')
       return
     }
 
-    setIsJoining(true)
+    setCreating(true)
 
-    try {
-      // Deduct coins
-      const newBalance = user.balance - selectedAmount
-      await supabase
-        .from('users')
-        .update({ balance: newBalance })
-        .eq('id', user.id)
-
-      // Join round
-      await supabase.from('poker_players').insert({
-        round_id: currentRound.id,
-        user_id: user.id,
-        chips_in: selectedAmount,
-        status: 'playing',
+    // Create table
+    const { data: table, error } = await supabase
+      .from('poker_tables')
+      .insert({
+        name: newTable.name.trim(),
+        min_buy_in: newTable.min_buy_in,
+        creator_id: user.id,
+        pot: newTable.my_buy_in,
+        status: 'waiting'
       })
+      .select()
+      .single()
 
-      // Update pot
-      await supabase
-        .from('poker_rounds')
-        .update({ pot_total: (currentRound.pot_total || 0) + selectedAmount })
-        .eq('id', currentRound.id)
-
-      // Log transaction
-      await supabase.from('transactions').insert({
-        from_user_id: user.id,
-        amount: selectedAmount,
-        type: 'poker_buy_in',
-        description: `Poker buy-in (${selectedAmount} chips)`,
-      })
-
-      updateBalance(newBalance)
-      showToast('success', '🎰 Joined the poker round!')
-      setShowBuyInModal(false)
-      fetchPokerData()
-    } catch (error) {
-      console.error('Error joining round:', error)
-      showToast('error', 'Failed to join round')
-    } finally {
-      setIsJoining(false)
+    if (error) {
+      showToast('error', 'Failed to create table')
+      setCreating(false)
+      return
     }
+
+    // Join as first player
+    await supabase.from('poker_players').insert({
+      table_id: table.id,
+      user_id: user.id,
+      buy_in: newTable.my_buy_in,
+      stack: newTable.my_buy_in,
+      ready: true
+    })
+
+    // Deduct buy-in
+    const newBalance = user.balance - newTable.my_buy_in
+    await supabase.from('users').update({ balance: newBalance }).eq('id', user.id)
+    updateBalance(newBalance)
+
+    // Create transaction
+    await supabase.from('transactions').insert({
+      from_user_id: user.id,
+      amount: newTable.my_buy_in,
+      type: 'poker_buy_in',
+      description: `Poker buy-in for ${newTable.name}`
+    })
+
+    showToast('success', 'Table created!')
+    setShowCreateModal(false)
+    setNewTable({ name: '', min_buy_in: 5, my_buy_in: 5 })
+    setCreating(false)
+
+    // Navigate to table room
+    navigate(`/poker/${table.id}`)
   }
 
-  const handleAddChips = async () => {
-    if (!user || !currentRound || !myPlayer) return
+  async function joinTable(table, buyInAmount) {
+    if (buyInAmount < table.min_buy_in) {
+      showToast('error', `Minimum buy-in is ${table.min_buy_in} coins`)
+      return
+    }
 
-    if (user.balance < selectedAmount) {
+    if (user.balance < buyInAmount) {
       showToast('error', 'Not enough coins!')
       return
     }
 
-    setIsAddingChips(true)
-
-    try {
-      // Deduct coins
-      const newBalance = user.balance - selectedAmount
-      await supabase
-        .from('users')
-        .update({ balance: newBalance })
-        .eq('id', user.id)
-
-      // Update player chips
-      await supabase
-        .from('poker_players')
-        .update({ chips_in: myPlayer.chips_in + selectedAmount })
-        .eq('id', myPlayer.id)
-
-      // Update pot
-      await supabase
-        .from('poker_rounds')
-        .update({ pot_total: (currentRound.pot_total || 0) + selectedAmount })
-        .eq('id', currentRound.id)
-
-      // Log transaction
-      await supabase.from('transactions').insert({
-        from_user_id: user.id,
-        amount: selectedAmount,
-        type: 'poker_add_chips',
-        description: `Added ${selectedAmount} chips to poker`,
-      })
-
-      updateBalance(newBalance)
-      showToast('success', `Added ${selectedAmount} chips!`)
-      setShowAddChipsModal(false)
-      fetchPokerData()
-    } catch (error) {
-      console.error('Error adding chips:', error)
-      showToast('error', 'Failed to add chips')
-    } finally {
-      setIsAddingChips(false)
+    // Check if already joined
+    const alreadyJoined = table.players?.some(p => p.user_id === user.id)
+    if (alreadyJoined) {
+      showToast('error', 'Already at this table!')
+      return
     }
+
+    // Join table
+    await supabase.from('poker_players').insert({
+      table_id: table.id,
+      user_id: user.id,
+      buy_in: buyInAmount,
+      stack: buyInAmount,
+      ready: false
+    })
+
+    // Update pot
+    const newPot = table.pot + buyInAmount
+    await supabase.from('poker_tables').update({ pot: newPot }).eq('id', table.id)
+
+    // Deduct buy-in
+    const newBalance = user.balance - buyInAmount
+    await supabase.from('users').update({ balance: newBalance }).eq('id', user.id)
+    updateBalance(newBalance)
+
+    // Create transaction
+    await supabase.from('transactions').insert({
+      from_user_id: user.id,
+      amount: buyInAmount,
+      type: 'poker_buy_in',
+      description: `Joined poker table: ${table.name}`
+    })
+
+    showToast('success', 'Joined table!')
+
+    // Navigate to table room
+    navigate(`/poker/${table.id}`)
   }
 
-  const handleFold = async () => {
-    if (!myPlayer || !currentRound) return
-
-    setIsFolding(true)
-
-    try {
-      await supabase
-        .from('poker_players')
-        .update({ status: 'folded' })
-        .eq('id', myPlayer.id)
-
-      showToast('success', 'You folded')
-      fetchPokerData()
-    } catch (error) {
-      console.error('Error folding:', error)
-      showToast('error', 'Failed to fold')
-    } finally {
-      setIsFolding(false)
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <>
-        <Header title="Poker" showBack showBalance />
-        <PageWrapper className="flex items-center justify-center">
-          <Spinner size="lg" />
-        </PageWrapper>
-      </>
-    )
-  }
+  const hasJoined = (table) => table.players?.some(p => p.user_id === user?.id)
 
   return (
-    <>
-      <Header title="Poker" showBack showBalance />
-
-      <PageWrapper className="pt-0">
-        <div className="text-center py-8">
-          <span className="text-6xl block mb-4">🃏</span>
-          <h2 className="text-2xl font-bold text-white mb-2">POKER NIGHT</h2>
-          <div className="h-0.5 w-16 bg-pastel-purple mx-auto my-4" />
+    <PageWrapper title="Poker" withNav>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <span>🃏</span> Poker
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">
+              Create or join poker tables
+            </p>
+          </div>
+          <Button onClick={() => setShowCreateModal(true)}>
+            + Create Table
+          </Button>
         </div>
 
-        {!currentRound ? (
+        {/* Tables List */}
+        {loading ? (
+          <div className="text-center py-12 text-slate-400">Loading tables...</div>
+        ) : tables.length === 0 ? (
           <Card className="text-center py-12">
-            <span className="text-5xl block mb-4">💤</span>
-            <p className="text-white font-semibold mb-2">No Active Round</p>
-            <p className="text-slate-400 text-sm">
-              Wait for an admin to start a new poker round
-            </p>
+            <div className="text-4xl mb-4">🃏</div>
+            <p className="text-slate-400">No active tables</p>
+            <p className="text-slate-500 text-sm mt-2">Create one to get started!</p>
           </Card>
         ) : (
-          <>
-            {/* Current Round Info */}
-            <Card className="mb-6 bg-gradient-to-br from-green-500/20 to-blue-500/20 border-green-500/30">
-              <div className="text-center mb-4">
-                <Badge
-                  variant={
-                    currentRound.status === 'open'
-                      ? 'success'
-                      : currentRound.status === 'playing'
-                      ? 'purple'
-                      : 'secondary'
-                  }
-                  size="lg"
-                >
-                  {currentRound.status === 'open' && '🟢 JOIN NOW'}
-                  {currentRound.status === 'locked' && '🔒 LOCKED'}
-                  {currentRound.status === 'playing' && '🎲 IN PROGRESS'}
-                </Badge>
-              </div>
-
-              <div className="text-center mb-4">
-                <p className="text-slate-400 text-sm mb-1">Current Pot</p>
-                <p className="text-coin-gold text-4xl font-bold">
-                  {currentRound.pot_total || 0}🪙
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
-                <div className="text-center">
-                  <p className="text-slate-400 text-xs mb-1">Players</p>
-                  <p className="text-white text-xl font-bold">{players.length}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-slate-400 text-xs mb-1">Min Buy-In</p>
-                  <p className="text-white text-xl font-bold">{currentRound.min_buy_in}🪙</p>
-                </div>
-              </div>
-            </Card>
-
-            {/* My Status */}
-            {myPlayer && (
-              <Card className="mb-6 bg-purple-500/10 border-purple-500/30">
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                  <span>🎴</span>
-                  Your Status
-                </h3>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 text-sm">Chips In</span>
-                    <span className="text-coin-gold font-bold">{myPlayer.chips_in}🪙</span>
+          <div className="space-y-4">
+            {tables.map((table) => (
+              <Card
+                key={table.id}
+                className={cn(
+                  'p-4',
+                  hasJoined(table) && 'cursor-pointer hover:border-purple-500/50 transition-colors'
+                )}
+                onClick={() => hasJoined(table) && navigate(`/poker/${table.id}`)}
+              >
+                {/* Table Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="font-bold text-white text-lg">{table.name}</h3>
+                    <p className="text-slate-400 text-sm">
+                      by {table.creator?.name || 'Unknown'}
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 text-sm">Status</span>
-                    <Badge
-                      variant={
-                        myPlayer.status === 'playing'
-                          ? 'success'
-                          : myPlayer.status === 'winner'
-                          ? 'coin'
-                          : 'secondary'
-                      }
-                      size="sm"
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-coin-gold">{table.pot}🪙</div>
+                    <div className="text-xs text-slate-400">pot</div>
+                  </div>
+                </div>
+
+                {/* Table Info */}
+                <div className="flex items-center gap-4 mb-4 text-sm">
+                  <div className="bg-slate-800 px-3 py-1 rounded-lg">
+                    <span className="text-slate-400">Min:</span>{' '}
+                    <span className="text-white font-semibold">{table.min_buy_in}🪙</span>
+                  </div>
+                  <div className="bg-slate-800 px-3 py-1 rounded-lg">
+                    <span className="text-slate-400">Players:</span>{' '}
+                    <span className="text-white font-semibold">{table.players?.length || 0}</span>
+                  </div>
+                  <div
+                    className={cn(
+                      'px-3 py-1 rounded-lg text-xs font-semibold',
+                      table.status === 'waiting' && 'bg-green-500/20 text-green-400',
+                      table.status === 'playing' && 'bg-yellow-500/20 text-yellow-400'
+                    )}
+                  >
+                    {table.status === 'waiting' ? 'Open' : 'In Progress'}
+                  </div>
+                </div>
+
+                {/* Players */}
+                <div className="mb-4">
+                  <p className="text-slate-400 text-xs mb-2">Players:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {table.players?.map((player) => (
+                      <div
+                        key={player.id}
+                        className={cn(
+                          'px-3 py-1 rounded-full text-sm',
+                          player.ready
+                            ? 'bg-green-500/20 text-green-400'
+                            : 'bg-slate-700 text-slate-300'
+                        )}
+                      >
+                        {player.user?.name || 'Unknown'}
+                        {player.ready && ' ✓'}
+                        <span className="text-coin-gold ml-1">({player.stack}🪙)</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  {table.status === 'waiting' && !hasJoined(table) && (
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const buyIn = prompt(`Enter your buy-in (minimum ${table.min_buy_in}🪙):`, table.min_buy_in)
+                        if (buyIn) {
+                          joinTable(table, parseInt(buyIn))
+                        }
+                      }}
+                      className="flex-1"
                     >
-                      {myPlayer.status === 'playing' && '🎲 Playing'}
-                      {myPlayer.status === 'folded' && '❌ Folded'}
-                      {myPlayer.status === 'winner' && '🏆 Winner'}
-                      {myPlayer.status === 'loser' && '😔 Lost'}
-                    </Badge>
-                  </div>
-                  {myPlayer.status === 'winner' && myPlayer.winnings > 0 && (
-                    <div className="flex items-center justify-between pt-2 border-t border-white/10">
-                      <span className="text-green-400 text-sm font-semibold">Winnings</span>
-                      <span className="text-green-400 font-bold text-lg">
-                        +{myPlayer.winnings}🪙
-                      </span>
-                    </div>
+                      Join ({table.min_buy_in}🪙+)
+                    </Button>
+                  )}
+
+                  {hasJoined(table) && (
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate(`/poker/${table.id}`)
+                      }}
+                      variant="secondary"
+                      className="flex-1"
+                    >
+                      Enter Table →
+                    </Button>
                   )}
                 </div>
               </Card>
-            )}
+            ))}
+          </div>
+        )}
+      </div>
 
-            {/* Action Buttons */}
-            <div className="space-y-3 mb-6">
-              {canJoin && (
-                <Button
-                  variant="success"
-                  size="lg"
-                  fullWidth
-                  onClick={() => {
-                    setSelectedAmount(currentRound.min_buy_in)
-                    setShowBuyInModal(true)
-                  }}
-                >
-                  🎰 JOIN ROUND
-                </Button>
-              )}
+      {/* Create Table Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <Card className="w-full max-w-md mx-4 p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Create Poker Table</h2>
 
-              {canAddChips && (
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onClick={() => {
-                    setSelectedAmount(3)
-                    setShowAddChipsModal(true)
-                  }}
-                >
-                  ➕ ADD CHIPS
-                </Button>
-              )}
-
-              {canFold && (
-                <Button
-                  variant="ghost"
-                  fullWidth
-                  onClick={handleFold}
-                  loading={isFolding}
-                >
-                  ❌ FOLD
-                </Button>
-              )}
+            {/* Table Name */}
+            <div className="mb-4">
+              <label className="text-slate-400 text-sm mb-1 block">Table Name</label>
+              <input
+                type="text"
+                value={newTable.name}
+                onChange={(e) => setNewTable({ ...newTable, name: e.target.value })}
+                placeholder={`${user?.name}'s Table`}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+              />
             </div>
 
-            {/* Players List */}
-            <div>
-              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                Players ({players.length})
-              </h3>
-
-              <div className="space-y-2">
-                {players.map((player) => (
-                  <Card
-                    key={player.id}
+            {/* Minimum Buy-in */}
+            <div className="mb-4">
+              <label className="text-slate-400 text-sm mb-2 block">Minimum Buy-in</label>
+              <div className="flex gap-2">
+                {MIN_BUY_IN_OPTIONS.map((amount) => (
+                  <button
+                    key={amount}
+                    onClick={() => setNewTable({
+                      ...newTable,
+                      min_buy_in: amount,
+                      my_buy_in: Math.max(newTable.my_buy_in, amount)
+                    })}
                     className={cn(
-                      'flex items-center justify-between',
-                      player.status === 'winner' && 'bg-coin-gold/10 border-coin-gold/30'
+                      'flex-1 py-3 rounded-lg font-semibold transition-all',
+                      newTable.min_buy_in === amount
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                     )}
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">
-                        {player.status === 'winner' && '🏆'}
-                        {player.status === 'playing' && '🎴'}
-                        {player.status === 'folded' && '❌'}
-                        {player.status === 'loser' && '😔'}
-                      </span>
-                      <div>
-                        <p className="text-white font-medium">
-                          {player.users?.name}
-                          {player.user_id === user?.id && (
-                            <span className="text-purple-400 text-sm ml-2">(You)</span>
-                          )}
-                        </p>
-                        <p className="text-slate-400 text-sm">{player.chips_in} chips</p>
-                      </div>
-                    </div>
-
-                    {player.status === 'winner' && player.winnings > 0 && (
-                      <Badge variant="coin" size="sm">
-                        +{player.winnings}🪙
-                      </Badge>
-                    )}
-                  </Card>
+                    {amount}🪙
+                  </button>
                 ))}
               </div>
             </div>
-          </>
-        )}
-      </PageWrapper>
 
-      {/* Buy-In Modal */}
-      <Modal
-        isOpen={showBuyInModal}
-        onClose={() => setShowBuyInModal(false)}
-        title="Join Poker Round"
-      >
-        <div className="space-y-4">
-          <p className="text-slate-400">Select your buy-in amount:</p>
+            {/* Your Buy-in */}
+            <div className="mb-6">
+              <label className="text-slate-400 text-sm mb-2 block">Your Buy-in</label>
+              <input
+                type="number"
+                value={newTable.my_buy_in}
+                onChange={(e) => setNewTable({ ...newTable, my_buy_in: parseInt(e.target.value) || 0 })}
+                min={newTable.min_buy_in}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+              />
+              <p className="text-slate-500 text-xs mt-1">Your balance: {user?.balance}🪙</p>
+            </div>
 
-          <div className="grid grid-cols-4 gap-2">
-            {[3, 5, 10, 15].map((amount) => (
-              <button
-                key={amount}
-                onClick={() => setSelectedAmount(amount)}
-                disabled={(user?.balance || 0) < amount}
-                className={cn(
-                  'px-4 py-3 rounded-lg border-2 transition-all',
-                  selectedAmount === amount
-                    ? 'border-green-500 bg-green-500/20 text-green-400'
-                    : (user?.balance || 0) < amount
-                    ? 'border-white/10 bg-white/5 text-slate-600 cursor-not-allowed'
-                    : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'
-                )}
+            {/* Actions */}
+            <div className="flex gap-3">
+              <Button
+                onClick={() => setShowCreateModal(false)}
+                variant="secondary"
+                className="flex-1"
               >
-                <span className="font-bold">{amount}🪙</span>
-              </button>
-            ))}
-          </div>
-
-          <p className="text-slate-500 text-sm">Your balance: {user?.balance}🪙</p>
-
-          <div className="flex gap-3">
-            <Button
-              variant="success"
-              fullWidth
-              onClick={handleJoinRound}
-              loading={isJoining}
-              disabled={(user?.balance || 0) < selectedAmount}
-            >
-              Join with {selectedAmount}🪙
-            </Button>
-            <Button variant="ghost" fullWidth onClick={() => setShowBuyInModal(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Add Chips Modal */}
-      <Modal
-        isOpen={showAddChipsModal}
-        onClose={() => setShowAddChipsModal(false)}
-        title="Add More Chips"
-      >
-        <div className="space-y-4">
-          <p className="text-slate-400">Add more chips to the pot:</p>
-
-          <div className="grid grid-cols-4 gap-2">
-            {[3, 5, 10, 15].map((amount) => (
-              <button
-                key={amount}
-                onClick={() => setSelectedAmount(amount)}
-                disabled={(user?.balance || 0) < amount}
-                className={cn(
-                  'px-4 py-3 rounded-lg border-2 transition-all',
-                  selectedAmount === amount
-                    ? 'border-blue-500 bg-blue-500/20 text-blue-400'
-                    : (user?.balance || 0) < amount
-                    ? 'border-white/10 bg-white/5 text-slate-600 cursor-not-allowed'
-                    : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'
-                )}
+                Cancel
+              </Button>
+              <Button
+                onClick={createTable}
+                disabled={creating || newTable.my_buy_in > user?.balance}
+                className="flex-1"
               >
-                <span className="font-bold">+{amount}🪙</span>
-              </button>
-            ))}
-          </div>
-
-          <p className="text-slate-500 text-sm">Your balance: {user?.balance}🪙</p>
-
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              fullWidth
-              onClick={handleAddChips}
-              loading={isAddingChips}
-              disabled={(user?.balance || 0) < selectedAmount}
-            >
-              Add {selectedAmount}🪙
-            </Button>
-            <Button variant="ghost" fullWidth onClick={() => setShowAddChipsModal(false)}>
-              Cancel
-            </Button>
-          </div>
+                {creating ? 'Creating...' : `Create (${newTable.my_buy_in}🪙)`}
+              </Button>
+            </div>
+          </Card>
         </div>
-      </Modal>
-    </>
+      )}
+    </PageWrapper>
   )
 }
+
+export default Poker

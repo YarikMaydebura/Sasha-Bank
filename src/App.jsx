@@ -15,6 +15,7 @@ import {
   Risk,
   Lottery,
   Poker,
+  PokerRoom,
   Photos,
   Missions,
   Trade,
@@ -26,12 +27,14 @@ import {
   MyCards,
   MissionConfirm,
   GroupGames,
+  GroupGameRoom,
   Marketplace,
   AdminDashboard,
 } from './pages'
 
 // V3.0 Components
 import { StealAlertPopup } from './components/StealAlertPopup'
+import { RevivePopup } from './components/popups/RevivePopup'
 
 // Import CSS
 import './index.css'
@@ -143,6 +146,14 @@ function App() {
           }
         />
         <Route
+          path="/poker/:tableId"
+          element={
+            <ProtectedRoute>
+              <PokerRoom />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/photos"
           element={
             <ProtectedRoute>
@@ -231,6 +242,14 @@ function App() {
           }
         />
         <Route
+          path="/group-games/:gameId"
+          element={
+            <ProtectedRoute>
+              <GroupGameRoom />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/marketplace"
           element={
             <ProtectedRoute>
@@ -258,6 +277,9 @@ function App() {
 
       {/* V3.0: Steal alert popup for incoming steal attempts */}
       <StealAlertPopup />
+
+      {/* V3.0: Revive popup when balance hits 0 */}
+      <RevivePopup />
     </BrowserRouter>
   )
 }

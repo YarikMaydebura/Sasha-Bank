@@ -179,11 +179,12 @@ export function generateSimpleMission(guest) {
   const missions = []
   const traits = guest.traits
 
+  // V3.0: Trait missions reward 10 coins (was 5)
   if (traits.country) {
     missions.push({
       text: `Find someone from ${traits.country}`,
       answer: guest.name,
-      reward: 5
+      reward: 10
     })
   }
 
@@ -191,7 +192,7 @@ export function generateSimpleMission(guest) {
     missions.push({
       text: `Find someone originally from ${traits.country_origin}`,
       answer: guest.name,
-      reward: 5
+      reward: 10
     })
   }
 
@@ -199,7 +200,7 @@ export function generateSimpleMission(guest) {
     missions.push({
       text: `Find someone who studies ${traits.study}`,
       answer: guest.name,
-      reward: 5
+      reward: 10
     })
   }
 
@@ -207,7 +208,7 @@ export function generateSimpleMission(guest) {
     missions.push({
       text: `Find someone whose hobby is ${traits.hobby}`,
       answer: guest.name,
-      reward: 5
+      reward: 10
     })
   }
 
@@ -215,7 +216,7 @@ export function generateSimpleMission(guest) {
     missions.push({
       text: `Find someone who did ${traits.sport}`,
       answer: guest.name,
-      reward: 5
+      reward: 10
     })
   }
 
@@ -223,7 +224,7 @@ export function generateSimpleMission(guest) {
     missions.push({
       text: `Find someone who lives in ${traits.city}`,
       answer: guest.name,
-      reward: 5
+      reward: 10
     })
   }
 
@@ -231,7 +232,7 @@ export function generateSimpleMission(guest) {
     missions.push({
       text: `Find someone who: ${traits.unique}`,
       answer: guest.name,
-      reward: 5
+      reward: 10
     })
   }
 

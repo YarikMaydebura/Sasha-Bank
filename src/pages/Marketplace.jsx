@@ -114,6 +114,9 @@ export default function Marketplace() {
     setNewMission({ description: '', reward: 3 })
     setActiveTab('my')
     setCreating(false)
+
+    // V3.0: Force refresh to show mission immediately
+    await loadMissions()
   }
 
   async function acceptMission(mission) {
@@ -159,6 +162,9 @@ export default function Marketplace() {
     })
 
     showToast('success', 'Mission accepted! Complete it and tell the creator.')
+
+    // V3.0: Force refresh to update lists immediately
+    await loadMissions()
   }
 
   async function completeMission(mission) {

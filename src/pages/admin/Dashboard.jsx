@@ -9,7 +9,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Spinner } from '../../components/ui/Spinner'
 import { AdminRiskPanel } from '../../components/admin/AdminRiskPanel'
 import { LotteryDrawPanel } from '../../components/admin/LotteryDrawPanel'
-import { PokerPanel } from '../../components/admin/PokerPanel'
+// V3.0: PokerPanel removed - Poker is now user-created
 import { PhotoGalleryPanel } from '../../components/admin/PhotoGalleryPanel'
 import { GuestAskPanel } from '../../components/admin/GuestAskPanel'
 import { supabase } from '../../lib/supabase'
@@ -21,7 +21,7 @@ const tabs = [
   { id: 'risk', label: 'Risk', icon: '🎲' },
   { id: 'bar', label: 'Bar', icon: '🍸' },
   { id: 'lottery', label: 'Lottery', icon: '🎰' },
-  { id: 'poker', label: 'Poker', icon: '🃏' },
+  // V3.0: Poker removed - now user-created tables
   { id: 'photos', label: 'Photos', icon: '📸' },
   { id: 'guest_ask', label: 'Guest Ask', icon: '🔔' },
 ]
@@ -262,10 +262,7 @@ export function AdminDashboard() {
           <LotteryDrawPanel />
         )}
 
-        {/* Poker Tab */}
-        {activeTab === 'poker' && (
-          <PokerPanel />
-        )}
+        {/* V3.0: Poker tab removed - now user-created tables at /poker */}
 
         {/* Photos Tab */}
         {activeTab === 'photos' && (
