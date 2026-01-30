@@ -1,44 +1,56 @@
+/**
+ * Sasha Favors - V3.0 Updated
+ * Removed: Toast, Song dedication, Dance (too formal/awkward)
+ * Added: Birthday Wish, Secret Handshake, Drink with Sasha, Learn a Dance Move
+ */
 export const favors = [
   {
     id: 'hug',
-    name: 'Hug',
+    name: 'Hug from Sasha',
     emoji: '🤗',
-    description: 'Get a warm hug from Sasha',
+    description: 'Get a warm birthday hug from Sasha',
     price: 1,
   },
   {
     id: 'photo',
-    name: 'Photo',
+    name: 'Photo with Sasha',
     emoji: '📸',
-    description: 'Take a photo with Sasha',
+    description: 'Take a memorable photo with the birthday girl',
+    price: 2,
+  },
+  {
+    id: 'birthday_wish',
+    name: 'Birthday Wish',
+    emoji: '🎂',
+    description: 'Sasha tells you a special birthday wish',
     price: 2,
   },
   {
     id: 'compliment',
-    name: 'Compliment',
+    name: 'Personal Compliment',
     emoji: '💬',
-    description: 'Receive a personalized compliment',
+    description: 'Receive a personalized compliment from Sasha',
     price: 2,
   },
   {
-    id: 'dance',
-    name: 'Dance',
-    emoji: '💃',
-    description: 'Dance together for one song',
+    id: 'secret_handshake',
+    name: 'Secret Handshake',
+    emoji: '🤝',
+    description: 'Create a unique secret handshake with Sasha',
     price: 3,
   },
   {
-    id: 'toast',
-    name: 'Toast',
-    emoji: '🥂',
-    description: 'Sasha makes a toast in your honor',
-    price: 4,
+    id: 'drink_together',
+    name: 'Drink with Sasha',
+    emoji: '🥤',
+    description: 'Share a drink and chat with Sasha',
+    price: 3,
   },
   {
-    id: 'song_dedication',
-    name: 'Song Dedication',
-    emoji: '🎤',
-    description: 'Sasha dedicates a song to you',
-    price: 5,
+    id: 'dance_move',
+    name: 'Learn a Dance Move',
+    emoji: '💃',
+    description: 'Sasha teaches you a rhythmic gymnastics move',
+    price: 4,
   },
 ]

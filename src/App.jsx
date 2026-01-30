@@ -25,8 +25,13 @@ import {
   Notifications,
   MyCards,
   MissionConfirm,
+  GroupGames,
+  Marketplace,
   AdminDashboard,
 } from './pages'
+
+// V3.0 Components
+import { StealAlertPopup } from './components/StealAlertPopup'
 
 // Import CSS
 import './index.css'
@@ -217,6 +222,22 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/group-games"
+          element={
+            <ProtectedRoute>
+              <GroupGames />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/marketplace"
+          element={
+            <ProtectedRoute>
+              <Marketplace />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Admin routes */}
         <Route
@@ -234,6 +255,9 @@ function App() {
 
       {/* Global toast container */}
       <ToastContainer />
+
+      {/* V3.0: Steal alert popup for incoming steal attempts */}
+      <StealAlertPopup />
     </BrowserRouter>
   )
 }

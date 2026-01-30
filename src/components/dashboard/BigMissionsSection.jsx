@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils'
 export function BigMissionsSection({ missions = [], count = 0 }) {
   const navigate = useNavigate()
 
-  const activeMissions = missions.filter((m) => m.status === 'active')
+  const activeMissions = missions.filter((m) => m.status === 'assigned')
   const completedMissions = missions.filter((m) => m.status === 'completed')
 
   return (
@@ -61,7 +61,7 @@ export function BigMissionsSection({ missions = [], count = 0 }) {
                     {mission.type === 'game' ? '🎮' : mission.type === 'punishment' ? '😈' : '🎯'}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{mission.title}</p>
+                    <p className="text-white text-sm font-medium truncate">{mission.generated_text || mission.title}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-coin-gold text-xs font-semibold">
                         {mission.reward || 5}🪙
