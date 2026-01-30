@@ -91,7 +91,85 @@ export async function registerUser(name, pin, traitId = null) {
     }
   }
 
+  // V3.0 - Automatic Imposter Assignment (2 out of 23 guests)
+  // Only assign to non-admin users
+  if (!isAdmin) {
+    await tryAssignImposterMission(user)
+  }
+
   return user
+}
+
+/**
+ * V3.0 - Try to assign imposter (steal) mission to new user
+ * Uses probability: (remaining_slots / remaining_potential_guests)
+ * Target: 2 imposters out of 23 guests
+ */
+async function tryAssignImposterMission(user) {
+  const MAX_IMPOSTERS = 2
+  const TOTAL_EXPECTED_GUESTS = 23
+
+  try {
+    // Count existing imposters
+    const { count: imposterCount } = await supabase
+      .from('user_missions')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_secret', true)
+      .eq('status', 'assigned')
+
+    // If already have enough imposters, skip
+    if (imposterCount >= MAX_IMPOSTERS) {
+      return
+    }
+
+    // Count current non-admin users (excluding this new one)
+    const { count: currentGuests } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_admin', false)
+
+    // Calculate probability
+    // remaining_slots = MAX_IMPOSTERS - imposterCount
+    // remaining_guests = TOTAL_EXPECTED_GUESTS - (currentGuests - 1) [subtract 1 because this user just registered]
+    const remainingSlots = MAX_IMPOSTERS - (imposterCount || 0)
+    const remainingGuests = Math.max(1, TOTAL_EXPECTED_GUESTS - ((currentGuests || 1) - 1))
+    const probability = remainingSlots / remainingGuests
+
+    // Random roll
+    const roll = Math.random()
+
+    console.log(`[Imposter] User: ${user.name}, Prob: ${(probability * 100).toFixed(1)}%, Roll: ${(roll * 100).toFixed(1)}%`)
+
+    if (roll < probability) {
+      // This user becomes an imposter!
+      // Find a random victim (another non-admin user)
+      const { data: potentialVictims } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('is_admin', false)
+        .neq('id', user.id)
+
+      if (potentialVictims && potentialVictims.length > 0) {
+        const victim = potentialVictims[Math.floor(Math.random() * potentialVictims.length)]
+
+        // Assign secret steal mission
+        await supabase.from('user_missions').insert({
+          user_id: user.id,
+          generated_text: `🥷 SECRET MISSION: Steal coins from ${victim.name}! Scan their QR code to attempt.`,
+          reward: 5,
+          status: 'assigned',
+          verification: 'qr',
+          is_secret: true,
+          target_user_id: victim.id
+        })
+
+        console.log(`[Imposter] ✅ ${user.name} is now an IMPOSTER targeting ${victim.name}!`)
+      }
+    }
+  } catch (error) {
+    // Silent fail - imposter assignment is not critical
+    console.error('[Imposter] Assignment error:', error.message)
+  }
 }
 
 // Login existing user

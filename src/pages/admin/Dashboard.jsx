@@ -14,8 +14,7 @@ import { PhotoGalleryPanel } from '../../components/admin/PhotoGalleryPanel'
 import { GuestAskPanel } from '../../components/admin/GuestAskPanel'
 import { supabase } from '../../lib/supabase'
 import { useUIStore } from '../../stores/uiStore'
-import { missionTemplates, getPersonalizedMissions, generateMissionText } from '../../data/missions'
-import { pickRandom } from '../../lib/utils'
+// V3.0: Missions are now auto-generated on registration (see guestTraits.js)
 
 const tabs = [
   { id: 'overview', label: 'Overview', icon: '👥' },
@@ -34,7 +33,6 @@ export function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedUser, setSelectedUser] = useState(null)
   const [coinAdjust, setCoinAdjust] = useState(0)
-  const [isGeneratingMissions, setIsGeneratingMissions] = useState(false)
   const showToast = useUIStore((state) => state.showToast)
 
   useEffect(() => {
@@ -117,49 +115,6 @@ export function AdminDashboard() {
     }
   }
 
-  const handleGenerateMissions = async () => {
-    setIsGeneratingMissions(true)
-
-    try {
-      const nonAdminUsers = users.filter(u => !u.is_admin)
-      const personalizedTemplates = getPersonalizedMissions()
-
-      for (const user of nonAdminUsers) {
-        // Pick 1-2 random other users as targets
-        const otherUsers = nonAdminUsers.filter(u => u.id !== user.id)
-        if (otherUsers.length === 0) continue
-
-        // Pick 1-2 personalized missions
-        const missionCount = Math.min(2, Math.max(1, Math.floor(otherUsers.length / 3)))
-        const selectedTemplates = pickRandom(personalizedTemplates, missionCount)
-        const selectedTargets = pickRandom(otherUsers, missionCount)
-
-        for (let i = 0; i < missionCount; i++) {
-          const template = Array.isArray(selectedTemplates) ? selectedTemplates[i] : selectedTemplates
-          const target = Array.isArray(selectedTargets) ? selectedTargets[i] : selectedTargets
-
-          await supabase.from('user_missions').insert({
-            user_id: user.id,
-            template_id: template.id,
-            target_user_id: target.id,
-            generated_text: generateMissionText(template, target.name),
-            reward: template.reward,
-            difficulty: template.difficulty,
-            verification: template.verification,
-            status: 'assigned',
-          })
-        }
-      }
-
-      showToast('success', `Generated missions for ${nonAdminUsers.length} users!`)
-    } catch (error) {
-      console.error('Error generating missions:', error)
-      showToast('error', 'Failed to generate missions')
-    } finally {
-      setIsGeneratingMissions(false)
-    }
-  }
-
   const guestCount = users.filter(u => !u.is_admin).length
 
   if (isLoading) {
@@ -225,16 +180,7 @@ export function AdminDashboard() {
           </Button>
         </div>
 
-        {/* Generate Missions Button */}
-        <Button
-          variant="primary"
-          fullWidth
-          className="mb-6"
-          onClick={handleGenerateMissions}
-          loading={isGeneratingMissions}
-        >
-          🎯 GENERATE PERSONAL MISSIONS
-        </Button>
+        {/* V3.0: Missions are auto-generated on registration via guestTraits.js */}
 
         {/* All Guests */}
         <div>
