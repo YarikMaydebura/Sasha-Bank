@@ -68,15 +68,24 @@ export function LotteryDrawPanel() {
     { id: 'physical', name: 'Physical Prize', emoji: '🎁' },
   ]
 
-  const coinValues = ['10', '20', '50', '100']
+  // V3.0 - Updated coin values for instant lottery
+  const coinValues = ['-1', '+5', '+8', '+10', '+15', '+20']
   const cardRarityOptions = ['common', 'rare', 'epic', 'legendary']
+  // V3.0 - Fun challenges for instant lottery
   const punishmentOptions = [
-    '20 pushups',
-    'Sing a song',
-    'Bean Boozle candy',
-    'Take a shot',
-    'Dance solo for 30 seconds',
-    'Tell a joke',
+    'Bean Boozle Challenge',
+    'Truth or Dare',
+    'Wild Card - Host Decides!',
+    'Sing a verse',
+    'Do 10 pushups',
+  ]
+
+  // Physical prizes for instant lottery
+  const physicalPrizeOptions = [
+    'Free Drink',
+    'Snack of choice',
+    'Party favor',
+    'Mystery box item',
   ]
 
   const handleDrawWinner = async () => {
@@ -103,8 +112,14 @@ export function LotteryDrawPanel() {
       return
     }
 
-    if (winningTicket.status === 'won') {
-      showToast('error', 'This ticket has already won')
+    // V3.0 - Check for pending (instant mode) or already claimed
+    if (winningTicket.status === 'claimed' || winningTicket.status === 'won') {
+      showToast('error', 'This ticket has already been processed')
+      return
+    }
+
+    if (winningTicket.status !== 'pending') {
+      showToast('error', 'This ticket is not pending')
       return
     }
 
@@ -114,14 +129,23 @@ export function LotteryDrawPanel() {
       const winnerId = winningTicket.user_id
       const winnerName = winningTicket.users.name
 
-      // Update ticket status
+      // Build prize description for user display
+      let prizeDescription = selectedPrizeValue
+      if (selectedPrizeType === 'coins') {
+        prizeDescription = `${selectedPrizeValue} coins`
+      } else if (selectedPrizeType === 'card') {
+        prizeDescription = `${selectedPrizeValue.charAt(0).toUpperCase() + selectedPrizeValue.slice(1)} Card`
+      }
+
+      // V3.0 - Update ticket status to 'claimed' for instant mode
       await supabase
         .from('lottery_tickets')
         .update({
-          status: 'won',
+          status: 'claimed',
           winning_item: selectedPrizeValue,
           prize_type: selectedPrizeType,
           prize_value: selectedPrizeValue,
+          prize_description: prizeDescription,
           drawn_at: new Date().toISOString(),
         })
         .eq('id', winningTicket.id)
@@ -129,23 +153,28 @@ export function LotteryDrawPanel() {
       // Award prize based on type
       switch (selectedPrizeType) {
         case 'coins':
-          const coinAmount = parseInt(selectedPrizeValue)
+          // V3.0 - Parse coin amount (can be negative like "-1" or positive like "+10")
+          const coinAmount = parseInt(selectedPrizeValue.replace('+', ''))
           const { data: userData } = await supabase
             .from('users')
             .select('balance')
             .eq('id', winnerId)
             .single()
 
+          // Ensure balance doesn't go below 0
+          const newBalance = Math.max(0, (userData.balance || 0) + coinAmount)
           await supabase
             .from('users')
-            .update({ balance: (userData.balance || 0) + coinAmount })
+            .update({ balance: newBalance })
             .eq('id', winnerId)
 
           await supabase.from('transactions').insert({
             to_user_id: winnerId,
-            amount: coinAmount,
-            type: 'lottery_win',
-            description: `Lottery prize: +${coinAmount} coins`,
+            amount: Math.abs(coinAmount),
+            type: coinAmount >= 0 ? 'lottery_win' : 'lottery_penalty',
+            description: coinAmount >= 0
+              ? `Lottery prize: +${coinAmount} coins`
+              : `Lottery oops: ${coinAmount} coins`,
           })
           break
 
@@ -209,24 +238,25 @@ export function LotteryDrawPanel() {
     }
   }
 
-  const activeTickets = tickets.filter((t) => t.status === 'active')
-  const wonTickets = tickets.filter((t) => t.status === 'won')
+  // V3.0 - Support both old (active/won) and new (pending/claimed) statuses
+  const pendingTickets = tickets.filter((t) => t.status === 'pending' || t.status === 'active')
+  const claimedTickets = tickets.filter((t) => t.status === 'claimed' || t.status === 'won')
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
+      {/* Stats - V3.0 Instant Mode */}
       <div className="grid grid-cols-3 gap-4">
         <Card className="text-center">
           <div className="text-3xl font-bold text-white">{tickets.length}</div>
           <div className="text-slate-400 text-sm mt-1">Total Tickets</div>
         </Card>
         <Card className="text-center">
-          <div className="text-3xl font-bold text-blue-400">{activeTickets.length}</div>
-          <div className="text-slate-400 text-sm mt-1">Active</div>
+          <div className="text-3xl font-bold text-yellow-400">{pendingTickets.length}</div>
+          <div className="text-slate-400 text-sm mt-1">⏳ Pending</div>
         </Card>
         <Card className="text-center">
-          <div className="text-3xl font-bold text-coin-gold">{wonTickets.length}</div>
-          <div className="text-slate-400 text-sm mt-1">Winners</div>
+          <div className="text-3xl font-bold text-green-400">{claimedTickets.length}</div>
+          <div className="text-slate-400 text-sm mt-1">✓ Claimed</div>
         </Card>
       </div>
 
@@ -356,13 +386,31 @@ export function LotteryDrawPanel() {
               )}
 
               {selectedPrizeType === 'physical' && (
-                <input
-                  type="text"
-                  value={selectedPrizeValue}
-                  onChange={(e) => setSelectedPrizeValue(e.target.value)}
-                  placeholder="Enter physical prize name"
-                  className="w-full px-4 py-3 bg-black/30 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    {physicalPrizeOptions.map((prize) => (
+                      <button
+                        key={prize}
+                        onClick={() => setSelectedPrizeValue(prize)}
+                        className={cn(
+                          'px-4 py-3 rounded-lg border-2 transition-all text-left',
+                          selectedPrizeValue === prize
+                            ? 'border-pink-500 bg-pink-500/20 text-white'
+                            : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'
+                        )}
+                      >
+                        🎁 {prize}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={physicalPrizeOptions.includes(selectedPrizeValue) ? '' : selectedPrizeValue}
+                    onChange={(e) => setSelectedPrizeValue(e.target.value)}
+                    placeholder="Or enter custom prize..."
+                    className="w-full px-4 py-3 bg-black/30 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
               )}
             </div>
           )}
@@ -396,8 +444,10 @@ export function LotteryDrawPanel() {
                 key={ticket.id}
                 className={cn(
                   'flex items-center justify-between p-3 rounded-lg',
-                  ticket.status === 'won'
-                    ? 'bg-coin-gold/20 border border-coin-gold/30'
+                  (ticket.status === 'claimed' || ticket.status === 'won')
+                    ? 'bg-green-500/20 border border-green-500/30'
+                    : ticket.status === 'pending'
+                    ? 'bg-yellow-500/20 border border-yellow-500/30 animate-pulse'
                     : 'bg-white/5 border border-white/10'
                 )}
               >
@@ -408,12 +458,17 @@ export function LotteryDrawPanel() {
                       <span className="text-white font-mono font-bold">
                         #{String(ticket.ticket_number).padStart(3, '0')}
                       </span>
-                      {ticket.status === 'won' && <Badge variant="coin">WINNER</Badge>}
+                      {(ticket.status === 'claimed' || ticket.status === 'won') && (
+                        <Badge variant="green">✓ CLAIMED</Badge>
+                      )}
+                      {ticket.status === 'pending' && (
+                        <Badge variant="coin">⏳ WAITING</Badge>
+                      )}
                     </div>
                     <div className="text-slate-400 text-sm">{ticket.users?.name}</div>
-                    {ticket.status === 'won' && ticket.winning_item && (
-                      <div className="text-purple-300 text-xs mt-1">
-                        Prize: {ticket.winning_item}
+                    {(ticket.status === 'claimed' || ticket.status === 'won') && (ticket.prize_description || ticket.winning_item) && (
+                      <div className="text-green-300 text-xs mt-1">
+                        Prize: {ticket.prize_description || ticket.winning_item}
                       </div>
                     )}
                   </div>

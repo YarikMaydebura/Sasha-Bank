@@ -11,6 +11,9 @@ import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
 import { supabase } from '../lib/supabase'
 import { cn } from '../lib/utils'
+import { getStepByQRId, isChainQR } from '../data/chainMissions'
+import { getHiddenQRById, isHiddenQR } from '../data/hiddenQRCodes'
+import { initiateSteal } from '../lib/stealSystem'
 
 export function Scan() {
   const navigate = useNavigate()
@@ -20,6 +23,9 @@ export function Scan() {
   const [scanner, setScanner] = useState(null)
   const [showQRMenu, setShowQRMenu] = useState(false)
   const [scannedUser, setScannedUser] = useState(null)
+  const [chainResult, setChainResult] = useState(null)
+  const [hiddenResult, setHiddenResult] = useState(null)
+  const updateBalance = useUserStore((state) => state.updateBalance)
 
   useEffect(() => {
     return () => {
@@ -118,7 +124,213 @@ export function Scan() {
         break
 
       default:
-        showToast('info', `Scanned: ${text}`)
+        // V3.0 - Check for chain and hidden QR codes
+        if (isChainQR(text)) {
+          await handleChainQR(text)
+        } else if (isHiddenQR(text)) {
+          await handleHiddenQR(text)
+        } else if (text.startsWith('steal:')) {
+          // Steal mission: steal:attackerId:victimId
+          const victimId = parts[2]
+          if (victimId === user.id) {
+            showToast('error', "You can't steal from yourself!")
+          } else {
+            await initiateSteal(user.id, victimId)
+            showToast('success', '🥷 Steal attempt initiated!')
+          }
+        } else {
+          showToast('info', `Scanned: ${text}`)
+        }
+    }
+  }
+
+  // V3.0 - Handle chain QR code scan
+  const handleChainQR = async (qrId) => {
+    const result = getStepByQRId(qrId)
+    if (!result) {
+      showToast('error', 'Unknown chain QR code')
+      return
+    }
+
+    const { chain, step } = result
+
+    try {
+      // Check user's progress in this chain
+      const { data: progress } = await supabase
+        .from('chain_progress')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('chain_id', chain.id)
+        .single()
+
+      // If no progress exists and this is step 1, start the chain
+      if (!progress && step.step === 1) {
+        await supabase.from('chain_progress').insert({
+          user_id: user.id,
+          chain_id: chain.id,
+          current_step: 1,
+          completed: false
+        })
+
+        setChainResult({
+          type: 'started',
+          chain,
+          step,
+          nextHint: chain.steps[1]?.hint
+        })
+        return
+      }
+
+      // If chain already completed
+      if (progress?.completed) {
+        showToast('info', `You've already completed ${chain.name}!`)
+        return
+      }
+
+      // Check if this is the next step
+      const currentStep = progress?.current_step || 0
+      if (step.step !== currentStep + 1) {
+        if (step.step <= currentStep) {
+          showToast('info', 'Already scanned this step!')
+        } else {
+          showToast('error', `Find step ${currentStep + 1} first!`)
+        }
+        return
+      }
+
+      // Update progress
+      const isLastStep = step.step === chain.steps.length
+      await supabase
+        .from('chain_progress')
+        .update({
+          current_step: step.step,
+          completed: isLastStep
+        })
+        .eq('id', progress.id)
+
+      if (isLastStep) {
+        // Award chain completion reward
+        const newBalance = user.balance + chain.reward
+        await supabase.from('users').update({ balance: newBalance }).eq('id', user.id)
+        updateBalance(newBalance)
+
+        await supabase.from('transactions').insert({
+          to_user_id: user.id,
+          amount: chain.reward,
+          type: 'chain_complete',
+          description: `Completed ${chain.name} chain`
+        })
+
+        setChainResult({
+          type: 'completed',
+          chain,
+          reward: chain.reward
+        })
+      } else {
+        setChainResult({
+          type: 'progress',
+          chain,
+          step,
+          currentStep: step.step,
+          totalSteps: chain.steps.length,
+          nextHint: chain.steps[step.step]?.hint
+        })
+      }
+    } catch (error) {
+      console.error('Error processing chain QR:', error)
+      showToast('error', 'Failed to process chain QR')
+    }
+  }
+
+  // V3.0 - Handle hidden QR code scan
+  const handleHiddenQR = async (qrId) => {
+    const hidden = getHiddenQRById(qrId)
+    if (!hidden) {
+      showToast('error', 'Unknown hidden QR code')
+      return
+    }
+
+    try {
+      // Check if user already scanned this
+      const { data: existingScan } = await supabase
+        .from('hidden_qr_scans')
+        .select('*')
+        .eq('qr_id', qrId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (existingScan) {
+        showToast('info', 'You already found this one!')
+        return
+      }
+
+      // Check total scans for this QR
+      const { count } = await supabase
+        .from('hidden_qr_scans')
+        .select('*', { count: 'exact', head: true })
+        .eq('qr_id', qrId)
+
+      if (count >= hidden.max_scans) {
+        showToast('error', 'Too late! This QR has been claimed by others.')
+        return
+      }
+
+      // Record the scan
+      await supabase.from('hidden_qr_scans').insert({
+        qr_id: qrId,
+        user_id: user.id,
+        reward_type: hidden.reward_type,
+        reward_amount: hidden.reward_amount || 0
+      })
+
+      // Process reward based on type
+      if (hidden.reward_type === 'coins' || hidden.reward_type === 'trap') {
+        const amount = hidden.reward_amount
+        const newBalance = Math.max(0, user.balance + amount)
+        await supabase.from('users').update({ balance: newBalance }).eq('id', user.id)
+        updateBalance(newBalance)
+
+        await supabase.from('transactions').insert({
+          to_user_id: user.id,
+          amount: Math.abs(amount),
+          type: amount >= 0 ? 'hidden_qr_coins' : 'hidden_qr_trap',
+          description: hidden.message
+        })
+
+        setHiddenResult({
+          ...hidden,
+          found_position: count + 1
+        })
+      } else if (hidden.reward_type === 'card') {
+        // Award card
+        const { data: cardData } = await supabase
+          .from('cards')
+          .select('*')
+          .eq('id', hidden.reward_card_id)
+          .single()
+
+        if (cardData) {
+          await supabase.from('user_cards').insert({
+            user_id: user.id,
+            card_id: hidden.reward_card_id,
+            card_name: cardData.name,
+            card_emoji: cardData.emoji,
+            description: cardData.description,
+            rarity: cardData.rarity,
+            status: 'owned',
+            obtained_from: 'hidden_qr'
+          })
+        }
+
+        setHiddenResult({
+          ...hidden,
+          found_position: count + 1,
+          card: cardData
+        })
+      }
+    } catch (error) {
+      console.error('Error processing hidden QR:', error)
+      showToast('error', 'Failed to process hidden QR')
     }
   }
 
@@ -295,6 +507,117 @@ export function Scan() {
       </PageWrapper>
 
       <BottomNav />
+
+      {/* V3.0 - Chain Progress Modal */}
+      <Modal
+        isOpen={!!chainResult}
+        onClose={() => setChainResult(null)}
+        title={chainResult?.chain?.name || 'Chain Mission'}
+      >
+        {chainResult && (
+          <div className="text-center py-4">
+            <div className="text-6xl mb-4">{chainResult.chain.emoji}</div>
+
+            {chainResult.type === 'started' && (
+              <>
+                <h3 className="text-xl font-bold text-white mb-2">Chain Started!</h3>
+                <p className="text-slate-400 mb-4">
+                  You've started the {chainResult.chain.name} chain.
+                </p>
+                <div className="bg-purple-500/20 rounded-lg p-4 mb-4">
+                  <p className="text-purple-300 text-sm">Next hint:</p>
+                  <p className="text-white font-medium">{chainResult.nextHint}</p>
+                </div>
+                <p className="text-slate-500 text-sm">
+                  Complete all 5 steps for {chainResult.chain.reward}🪙!
+                </p>
+              </>
+            )}
+
+            {chainResult.type === 'progress' && (
+              <>
+                <h3 className="text-xl font-bold text-green-400 mb-2">Step {chainResult.currentStep} Complete!</h3>
+                <div className="flex justify-center gap-1 mb-4">
+                  {Array.from({ length: chainResult.totalSteps }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        'w-3 h-3 rounded-full',
+                        i < chainResult.currentStep ? 'bg-green-500' : 'bg-slate-600'
+                      )}
+                    />
+                  ))}
+                </div>
+                <div className="bg-purple-500/20 rounded-lg p-4 mb-4">
+                  <p className="text-purple-300 text-sm">Next hint:</p>
+                  <p className="text-white font-medium">{chainResult.nextHint}</p>
+                </div>
+              </>
+            )}
+
+            {chainResult.type === 'completed' && (
+              <>
+                <h3 className="text-2xl font-bold text-coin-gold mb-2">🎉 CHAIN COMPLETE!</h3>
+                <p className="text-slate-400 mb-4">
+                  You completed the {chainResult.chain.name} chain!
+                </p>
+                <div className="bg-coin-gold/20 rounded-lg p-4 mb-4">
+                  <p className="text-coin-gold text-3xl font-bold">+{chainResult.reward}🪙</p>
+                </div>
+              </>
+            )}
+
+            <Button fullWidth onClick={() => setChainResult(null)}>
+              Continue
+            </Button>
+          </div>
+        )}
+      </Modal>
+
+      {/* V3.0 - Hidden QR Result Modal */}
+      <Modal
+        isOpen={!!hiddenResult}
+        onClose={() => setHiddenResult(null)}
+        title={hiddenResult?.name || 'Hidden Discovery'}
+      >
+        {hiddenResult && (
+          <div className="text-center py-4">
+            <div className="text-6xl mb-4">{hiddenResult.emoji}</div>
+
+            <h3 className="text-xl font-bold text-white mb-2">{hiddenResult.name}</h3>
+            <p className="text-slate-400 mb-4">{hiddenResult.message}</p>
+
+            {hiddenResult.reward_type === 'coins' && (
+              <div className="bg-coin-gold/20 rounded-lg p-4 mb-4">
+                <p className="text-coin-gold text-3xl font-bold">+{hiddenResult.reward_amount}🪙</p>
+              </div>
+            )}
+
+            {hiddenResult.reward_type === 'trap' && (
+              <div className="bg-red-500/20 rounded-lg p-4 mb-4">
+                <p className="text-red-400 text-3xl font-bold">{hiddenResult.reward_amount}🪙</p>
+              </div>
+            )}
+
+            {hiddenResult.reward_type === 'card' && (
+              <div className="bg-purple-500/20 rounded-lg p-4 mb-4">
+                <p className="text-purple-300 text-sm">You got a card!</p>
+                <p className="text-white text-xl font-bold">
+                  {hiddenResult.card?.emoji} {hiddenResult.card?.name}
+                </p>
+              </div>
+            )}
+
+            <p className="text-slate-500 text-sm mb-4">
+              #{hiddenResult.found_position} of {hiddenResult.max_scans} to find this
+            </p>
+
+            <Button fullWidth onClick={() => setHiddenResult(null)}>
+              Awesome!
+            </Button>
+          </div>
+        )}
+      </Modal>
     </>
   )
 }

@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase'
 import { useUserStore } from '../stores/userStore'
 import { useUIStore } from '../stores/uiStore'
 import { cn } from '../lib/utils'
+import { getRandomSimpleMissions } from '../data/guestTraits'
 
 const tabs = [
   { id: 'main', label: 'Main', icon: '🎯' },
@@ -24,6 +25,7 @@ export function Missions() {
   const [punishments, setPunishments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedMission, setSelectedMission] = useState(null)
+  const [isGettingMore, setIsGettingMore] = useState(false)
   const user = useUserStore((state) => state.user)
   const showToast = useUIStore((state) => state.showToast)
 
@@ -108,6 +110,59 @@ export function Missions() {
   const pendingPunishments = punishments.filter(p => p.status === 'pending')
   const laterPunishments = punishments.filter(p => p.status === 'later')
 
+  // V3.0 - Get More Missions function
+  const handleGetMoreMissions = async () => {
+    if (isGettingMore) return
+
+    // Check if user already has too many active missions
+    if (mainMissions.length >= 5) {
+      showToast('info', 'Complete some missions first! Max 5 active.')
+      return
+    }
+
+    setIsGettingMore(true)
+
+    try {
+      // Get existing mission targets to avoid duplicates
+      const existingTargets = missions
+        .filter(m => m.target_user?.name)
+        .map(m => m.target_user.name)
+
+      // Generate 2 new simple missions
+      const newMissions = getRandomSimpleMissions(2, existingTargets)
+
+      if (newMissions.length === 0) {
+        showToast('info', 'No more unique missions available!')
+        setIsGettingMore(false)
+        return
+      }
+
+      // Insert new missions
+      const missionsToInsert = newMissions.map(m => ({
+        user_id: user.id,
+        generated_text: m.text,
+        reward: m.reward,
+        status: 'assigned',
+        verification: 'honor',
+        category: 'main'
+      }))
+
+      const { error } = await supabase
+        .from('user_missions')
+        .insert(missionsToInsert)
+
+      if (error) throw error
+
+      showToast('success', `🎯 Got ${newMissions.length} new missions!`)
+      fetchData()
+    } catch (error) {
+      console.error('Error getting more missions:', error)
+      showToast('error', 'Failed to get new missions')
+    } finally {
+      setIsGettingMore(false)
+    }
+  }
+
   return (
     <>
       <Header title="My Missions" showBack showBalance />
@@ -158,6 +213,23 @@ export function Missions() {
                   <div className="text-center py-12">
                     <span className="text-5xl block mb-4">🎯</span>
                     <p className="text-slate-400">No main missions yet!</p>
+                  </div>
+                )}
+
+                {/* V3.0 - Get More Missions Button */}
+                {mainMissions.length < 5 && (
+                  <div className="mb-6">
+                    <Button
+                      variant="gold"
+                      fullWidth
+                      onClick={handleGetMoreMissions}
+                      loading={isGettingMore}
+                    >
+                      🎲 Get More Missions
+                    </Button>
+                    <p className="text-slate-500 text-xs text-center mt-2">
+                      {mainMissions.length}/5 active missions
+                    </p>
                   </div>
                 )}
               </>
