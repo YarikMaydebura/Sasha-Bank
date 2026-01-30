@@ -41,6 +41,30 @@ const gameStations = [
   },
 ]
 
+// V3.0 Feature stations
+const featureStations = [
+  {
+    icon: '🎮',
+    title: 'Group Games',
+    subtitle: 'Play with friends',
+    href: '/group-games',
+  },
+  {
+    icon: '🏪',
+    title: 'Marketplace',
+    subtitle: 'Create missions',
+    href: '/marketplace',
+  },
+]
+
+// Poker station
+const pokerStation = {
+  icon: '🃏',
+  title: 'Poker',
+  subtitle: 'Texas Hold\'em',
+  href: '/poker',
+}
+
 // Other stations
 const otherStations = [
   {
@@ -242,6 +266,36 @@ export function Dashboard() {
               />
             ))}
           </div>
+        </div>
+
+        {/* V3.0 Features - Group Games & Marketplace */}
+        <div className="mt-6">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">
+            Social
+          </h2>
+
+          <div className="grid grid-cols-2 gap-3">
+            {featureStations.map((station) => (
+              <StationCard
+                key={station.href}
+                icon={station.icon}
+                title={station.title}
+                subtitle={station.subtitle}
+                href={station.href}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Poker */}
+        <div className="mt-6">
+          <StationCard
+            icon={pokerStation.icon}
+            title={pokerStation.title}
+            subtitle={pokerStation.subtitle}
+            href={pokerStation.href}
+            className="w-full"
+          />
         </div>
 
         {/* BIG CARDS SECTION */}
