@@ -80,15 +80,17 @@ export function PhotoGalleryPanel() {
       const randomPrompt = photoPrompts[Math.floor(Math.random() * photoPrompts.length)]
 
       // Send notification to all users
+      // Using 'admin_message' type (photo_prompt not in DB CHECK constraint)
       const notifications = users.map((user) => ({
         user_id: user.id,
-        type: 'photo_prompt',
+        type: 'admin_message',
         title: '📸 Photo Challenge!',
         message: `${randomPrompt.emoji} ${randomPrompt.text}`,
         data: {
           prompt_id: randomPrompt.id,
           prompt_text: randomPrompt.text,
           prompt_emoji: randomPrompt.emoji,
+          notification_type: 'photo_prompt',
         },
       }))
 
