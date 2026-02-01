@@ -523,13 +523,23 @@ export default function GroupGameRoom() {
             </>
           )}
 
-          <Button
-            onClick={() => navigate('/group-games')}
-            fullWidth
-            size="lg"
-          >
-            BACK TO GAMES
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => navigate('/')}
+              variant="secondary"
+              size="lg"
+              className="flex-1"
+            >
+              🏠 HOME
+            </Button>
+            <Button
+              onClick={() => navigate('/group-games')}
+              size="lg"
+              className="flex-1"
+            >
+              🎮 PLAY AGAIN
+            </Button>
+          </div>
         </div>
       </PageWrapper>
     )

@@ -676,13 +676,23 @@ export default function PokerRoom() {
             </>
           )}
 
-          <Button
-            onClick={() => navigate('/poker')}
-            fullWidth
-            size="lg"
-          >
-            BACK TO POKER
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => navigate('/')}
+              variant="secondary"
+              size="lg"
+              className="flex-1"
+            >
+              🏠 HOME
+            </Button>
+            <Button
+              onClick={() => navigate('/poker')}
+              size="lg"
+              className="flex-1"
+            >
+              🃏 PLAY AGAIN
+            </Button>
+          </div>
         </div>
       </PageWrapper>
     )
