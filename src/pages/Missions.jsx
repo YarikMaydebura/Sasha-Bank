@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
+import jsQR from 'jsqr'
 import { PageWrapper } from '../components/layout/PageWrapper'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/ui/Card'
@@ -25,11 +26,22 @@ export function Missions() {
   const [missions, setMissions] = useState([])
   const [punishments, setPunishments] = useState([])
   const [photoChallenges, setPhotoChallenges] = useState([])
+  const [treasureHunts, setTreasureHunts] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedMission, setSelectedMission] = useState(null)
   const [isGettingMore, setIsGettingMore] = useState(false)
+
+  // QR Scanner state for treasure hunts
+  const [scanningHunt, setScanningHunt] = useState(null)
+  const [qrStream, setQrStream] = useState(null)
+  const [isScanning, setIsScanning] = useState(false)
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const scanIntervalRef = useRef(null)
+
   const navigate = useNavigate()
   const user = useUserStore((state) => state.user)
+  const updateBalance = useUserStore((state) => state.updateBalance)
   const showToast = useUIStore((state) => state.showToast)
 
   useEffect(() => {
@@ -77,12 +89,145 @@ export function Missions() {
 
       if (photoError) throw photoError
       setPhotoChallenges(photoData || [])
+
+      // Fetch treasure hunt assignments
+      const { data: huntData, error: huntError } = await supabase
+        .from('treasure_hunt_assignments')
+        .select(`
+          *,
+          hunt:treasure_hunts(*)
+        `)
+        .eq('user_id', user.id)
+        .eq('status', 'assigned')
+        .order('created_at', { ascending: false })
+
+      if (huntError) {
+        console.error('Error fetching treasure hunts:', huntError)
+      } else {
+        setTreasureHunts(huntData || [])
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
       setIsLoading(false)
     }
   }
+
+  // QR Scanner functions for treasure hunts
+  const startQRScanner = async (assignment) => {
+    setScanningHunt(assignment)
+    setIsScanning(true)
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      })
+
+      setQrStream(stream)
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+
+        // Start scanning for QR codes
+        scanIntervalRef.current = setInterval(() => {
+          scanQRCode()
+        }, 500)
+      }
+    } catch (error) {
+      console.error('Camera error:', error)
+      showToast('error', 'Failed to access camera')
+      stopQRScanner()
+    }
+  }
+
+  const stopQRScanner = () => {
+    if (qrStream) {
+      qrStream.getTracks().forEach(track => track.stop())
+      setQrStream(null)
+    }
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current)
+      scanIntervalRef.current = null
+    }
+    setScanningHunt(null)
+    setIsScanning(false)
+  }
+
+  const scanQRCode = () => {
+    if (!videoRef.current || !canvasRef.current) return
+
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    const context = canvas.getContext('2d')
+
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) return
+
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+    const code = jsQR(imageData.data, imageData.width, imageData.height)
+
+    if (code && code.data) {
+      handleQRResult(code.data)
+    }
+  }
+
+  const handleQRResult = async (scannedCode) => {
+    if (!scanningHunt) return
+
+    // Check if scanned code matches the hunt's qr_code
+    if (scannedCode === scanningHunt.hunt.qr_code) {
+      // Stop scanner first
+      stopQRScanner()
+
+      try {
+        // Complete the hunt
+        await supabase
+          .from('treasure_hunt_assignments')
+          .update({ status: 'completed', completed_at: new Date().toISOString() })
+          .eq('id', scanningHunt.id)
+
+        // Award coins
+        const newBalance = user.balance + scanningHunt.hunt.reward
+        await supabase
+          .from('users')
+          .update({ balance: newBalance })
+          .eq('id', user.id)
+
+        await supabase.from('transactions').insert({
+          to_user_id: user.id,
+          amount: scanningHunt.hunt.reward,
+          type: 'treasure_hunt',
+          description: `Completed ${scanningHunt.hunt.name}!`
+        })
+
+        updateBalance(newBalance)
+        showToast('success', `🎉 ${scanningHunt.hunt.name} completed! +${scanningHunt.hunt.reward}🪙`)
+        fetchData()
+      } catch (error) {
+        console.error('Error completing treasure hunt:', error)
+        showToast('error', 'Failed to complete treasure hunt')
+      }
+    } else {
+      showToast('error', 'Wrong QR code! Keep looking!')
+    }
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (qrStream) {
+        qrStream.getTracks().forEach(track => track.stop())
+      }
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current)
+      }
+    }
+  }, [])
 
   const handleComplete = async (mission) => {
     if (mission.verification === 'honor') {
@@ -214,6 +359,44 @@ export function Missions() {
             {/* Main Missions Tab */}
             {activeTab === 'main' && (
               <>
+                {/* Treasure Hunt Section */}
+                {treasureHunts.length > 0 && (
+                  <div className="mb-6">
+                    <Card className="bg-gradient-to-r from-amber-600/20 to-yellow-600/20 border-amber-500/40">
+                      <h3 className="text-amber-300 font-semibold mb-3 flex items-center gap-2">
+                        <span className="text-xl">🗺️</span> TREASURE HUNT
+                      </h3>
+                      <div className="space-y-3">
+                        {treasureHunts.map((assignment) => (
+                          <div
+                            key={assignment.id}
+                            className="bg-amber-500/10 rounded-xl p-4"
+                          >
+                            <h4 className="text-white font-bold mb-2">{assignment.hunt?.name}</h4>
+                            <p className="text-amber-200 text-sm mb-3 italic">
+                              "{assignment.hunt?.first_clue}"
+                            </p>
+                            <p className="text-slate-400 text-xs mb-3">
+                              📍 {assignment.hunt?.total_steps} locations to discover
+                            </p>
+                            <div className="flex items-center justify-between">
+                              <Badge variant="coin" size="sm">+{assignment.hunt?.reward}🪙</Badge>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => startQRScanner(assignment)}
+                                className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 whitespace-nowrap"
+                              >
+                                📷 Scan Final QR
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
                 {/* Photo Challenges Section */}
                 {photoChallenges.length > 0 && (
                   <div className="mb-6">
@@ -431,6 +614,45 @@ export function Missions() {
           </div>
         )}
       </Modal>
+
+      {/* QR Scanner Modal for Treasure Hunts */}
+      <Modal
+        isOpen={!!scanningHunt}
+        onClose={stopQRScanner}
+        title="Scan Final QR Code"
+      >
+        <div className="text-center">
+          <p className="text-amber-300 mb-4">
+            🗺️ {scanningHunt?.hunt?.name}
+          </p>
+
+          <div className="relative bg-black rounded-xl overflow-hidden mb-4">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full aspect-square object-cover"
+            />
+            {isScanning && (
+              <div className="absolute inset-0 border-4 border-amber-500/50 rounded-xl pointer-events-none">
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-2 border-amber-400 rounded-lg" />
+              </div>
+            )}
+          </div>
+
+          <p className="text-slate-400 text-sm mb-4">
+            Point your camera at the QR code at the final location
+          </p>
+
+          <Button variant="ghost" fullWidth onClick={stopQRScanner}>
+            ❌ Cancel
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Hidden canvas for QR scanning */}
+      <canvas ref={canvasRef} className="hidden" />
     </>
   )
 }

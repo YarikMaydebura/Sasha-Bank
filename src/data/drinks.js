@@ -8,53 +8,43 @@ export const drinks = [
     description: 'Stay hydrated!'
   },
   {
-    id: 'vodka_juice',
-    name: 'Vodka + Juice',
-    price: 1,
-    category: 'easy',
-    emoji: '🍹',
-    description: 'Classic party drink'
-  },
-  {
-    id: 'red_wine',
-    name: 'Red Wine',
-    price: 2,
-    category: 'medium',
-    emoji: '🍷',
-    description: 'Smooth and elegant'
-  },
-  {
-    id: 'white_wine',
-    name: 'White Wine',
-    price: 2,
-    category: 'medium',
-    emoji: '🥂',
-    description: 'Light and refreshing'
-  },
-  {
-    id: 'rum_cocktail',
-    name: 'Rum Cocktail',
+    id: 'mojito',
+    name: 'Mojito',
     price: 3,
-    category: 'fancy',
+    category: 'cocktail',
     emoji: '🍹',
-    description: 'Tropical vibes'
+    description: 'Fresh mint & lime classic'
   },
   {
-    id: 'plum_wine',
-    name: 'Japanese Plum Wine',
+    id: 'cosmopolitan',
+    name: 'Cosmopolitan',
     price: 4,
+    category: 'cocktail',
+    emoji: '🍸',
+    description: 'Elegant vodka cranberry'
+  },
+  {
+    id: 'sex_on_the_beach',
+    name: 'Sex on the Beach',
+    price: 4,
+    category: 'cocktail',
+    emoji: '🏖️',
+    description: 'Fruity summer vibes'
+  },
+  {
+    id: 'passion_fruit_martini',
+    name: 'Passion Fruit Martini',
+    price: 5,
     category: 'premium',
-    emoji: '🍶',
-    description: 'The finest choice',
+    emoji: '🍹',
+    description: 'The star of the party',
     popular: true
   }
 ]
 
 export const drinkCategories = [
   { id: 'basic', name: 'Free', color: '#9ca3af' },
-  { id: 'easy', name: 'Easy Drinks', color: '#86EFAC' },
-  { id: 'medium', name: 'Medium', color: '#FCD34D' },
-  { id: 'fancy', name: 'Fancy', color: '#FBCFE8' },
+  { id: 'cocktail', name: 'Cocktails', color: '#FBCFE8' },
   { id: 'premium', name: 'Premium', color: '#A78BFA' }
 ]
 

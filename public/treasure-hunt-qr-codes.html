@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treasure Hunt QR Codes - Print Me!</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .qr-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            justify-content: center;
+            margin-top: 40px;
+        }
+        .qr-card {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .qr-card h2 {
+            margin: 0 0 10px 0;
+            color: #f59e0b;
+        }
+        .qr-card p {
+            color: #666;
+            margin: 0 0 20px 0;
+            font-size: 14px;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        .location {
+            margin-top: 15px;
+            padding: 10px;
+            background: #fef3c7;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #92400e;
+        }
+        @media print {
+            body {
+                background: white;
+            }
+            .qr-card {
+                box-shadow: none;
+                border: 2px solid #ccc;
+                page-break-inside: avoid;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Treasure Hunt QR Codes</h1>
+    <p style="text-align: center; color: #666;" class="no-print">Print this page and place QR codes at final locations!</p>
+
+    <div class="qr-container">
+        <div class="qr-card">
+            <h2>Treasure Hunt 1</h2>
+            <p>4 steps: Oven → Stairs → Balloon</p>
+            <canvas id="qr1"></canvas>
+            <div class="location">Place on BALLOON</div>
+        </div>
+
+        <div class="qr-card">
+            <h2>Treasure Hunt 2</h2>
+            <p>6 steps: Table → Fridge → Plant → Sasha → Lamp</p>
+            <canvas id="qr2"></canvas>
+            <div class="location">Place INSIDE LAMP</div>
+        </div>
+    </div>
+
+    <script>
+        // Generate QR codes
+        QRCode.toCanvas(document.getElementById('qr1'), 'HUNT1_SECRET_2025', {
+            width: 200,
+            margin: 2,
+            color: { dark: '#000000', light: '#ffffff' }
+        });
+
+        QRCode.toCanvas(document.getElementById('qr2'), 'HUNT2_SECRET_2025', {
+            width: 200,
+            margin: 2,
+            color: { dark: '#000000', light: '#ffffff' }
+        });
+    </script>
+
+    <div style="text-align: center; margin-top: 40px;" class="no-print">
+        <button onclick="window.print()" style="padding: 15px 30px; font-size: 18px; background: #f59e0b; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            Print QR Codes
+        </button>
+    </div>
+</body>
+</html>
