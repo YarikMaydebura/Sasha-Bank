@@ -24,6 +24,7 @@ export default function PokerRoom() {
   const [loading, setLoading] = useState(true)
   const [selectedWinner, setSelectedWinner] = useState(null)
   const [processingAction, setProcessingAction] = useState(false)
+  const [raiseAmount, setRaiseAmount] = useState(1)
 
   // Computed values
   const isHost = table?.creator_id === user?.id
@@ -221,6 +222,68 @@ export default function PokerRoom() {
     })
 
     showToast('success', 'Winner selected! Pot distributed!')
+    setProcessingAction(false)
+  }
+
+  // Handle raise with custom amount
+  async function handleRaise() {
+    if (!myPlayer || processingAction || raiseAmount < 1 || raiseAmount > myPlayer.stack) return
+    await handleQuickRaise(raiseAmount)
+  }
+
+  // Quick raise with specific amount
+  async function handleQuickRaise(amount) {
+    if (!myPlayer || processingAction || amount > myPlayer.stack || myPlayer.folded) return
+
+    setProcessingAction(true)
+
+    // Update player stack
+    const newStack = myPlayer.stack - amount
+    await supabase
+      .from('poker_players')
+      .update({ stack: newStack })
+      .eq('id', myPlayer.id)
+
+    // Update pot
+    await supabase
+      .from('poker_tables')
+      .update({ pot: table.pot + amount })
+      .eq('id', tableId)
+
+    // Update user's actual balance
+    const newBalance = user.balance - amount
+    await supabase
+      .from('users')
+      .update({ balance: newBalance })
+      .eq('id', user.id)
+    updateBalance(newBalance)
+
+    showToast('success', `Raised ${amount}🪙!`)
+    setRaiseAmount(1)
+    setProcessingAction(false)
+  }
+
+  // All-in - bet everything
+  async function handleAllIn() {
+    if (!myPlayer || processingAction || myPlayer.stack === 0 || myPlayer.folded) return
+    await handleQuickRaise(myPlayer.stack)
+    showToast('info', '🔥 ALL IN!')
+  }
+
+  // Fold - give up
+  async function handleFold() {
+    if (!myPlayer || processingAction || myPlayer.folded) return
+
+    if (!confirm('Fold? You will lose your current bet.')) return
+
+    setProcessingAction(true)
+
+    await supabase
+      .from('poker_players')
+      .update({ folded: true })
+      .eq('id', myPlayer.id)
+
+    showToast('info', 'You folded.')
     setProcessingAction(false)
   }
 
@@ -424,22 +487,103 @@ export default function PokerRoom() {
             <h2 className="text-white font-semibold mb-3">PLAYERS:</h2>
             <div className="space-y-2">
               {players.map((p) => (
-                <div key={p.id} className="flex justify-between items-center text-slate-300">
+                <div
+                  key={p.id}
+                  className={cn(
+                    "flex justify-between items-center",
+                    p.folded ? "text-slate-500 line-through" : "text-slate-300"
+                  )}
+                >
                   <span>
-                    🃏 {p.user?.name} {p.user_id === table.creator_id && '(Host)'}
+                    {p.folded ? '❌' : '🃏'} {p.user?.name} {p.user_id === table.creator_id && '(Host)'}
+                    {p.folded && ' (Folded)'}
                   </span>
-                  <span className="text-coin-gold">{p.stack}🪙</span>
+                  <span className={p.folded ? "text-slate-500" : "text-coin-gold"}>{p.stack}🪙</span>
                 </div>
               ))}
             </div>
           </Card>
 
+          {/* Betting Actions - Show for active (non-folded) players */}
+          {myPlayer && !myPlayer.folded && (
+            <Card>
+              <h2 className="text-white font-semibold mb-4">💰 YOUR ACTIONS:</h2>
+              <div className="text-center mb-4">
+                <div className="text-slate-400">Your Stack:</div>
+                <div className="text-2xl font-bold text-coin-gold">{myPlayer.stack}🪙</div>
+              </div>
+
+              {/* Raise Input */}
+              <div className="mb-4">
+                <label className="text-slate-400 text-sm">Raise Amount:</label>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="number"
+                    min="1"
+                    max={myPlayer.stack}
+                    value={raiseAmount}
+                    onChange={(e) => setRaiseAmount(Math.min(Math.max(1, Number(e.target.value)), myPlayer.stack))}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                  />
+                  <Button onClick={handleRaise} disabled={processingAction || raiseAmount < 1 || myPlayer.stack < raiseAmount}>
+                    📈 Raise
+                  </Button>
+                </div>
+              </div>
+
+              {/* Quick Bet Buttons */}
+              <div className="flex gap-2 mb-4">
+                {[1, 2, 5, 10].map(amt => (
+                  <Button
+                    key={amt}
+                    onClick={() => handleQuickRaise(amt)}
+                    disabled={processingAction || myPlayer.stack < amt}
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                  >
+                    +{amt}🪙
+                  </Button>
+                ))}
+              </div>
+
+              {/* All-in & Fold */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleAllIn}
+                  disabled={processingAction || myPlayer.stack === 0}
+                  variant="secondary"
+                  className="flex-1 bg-orange-600 hover:bg-orange-500"
+                >
+                  🔥 ALL-IN ({myPlayer.stack}🪙)
+                </Button>
+                <Button
+                  onClick={handleFold}
+                  disabled={processingAction}
+                  variant="danger"
+                  className="flex-1"
+                >
+                  ❌ FOLD
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* Show if player folded */}
+          {myPlayer?.folded && (
+            <Card className="bg-red-900/30 border-red-500/40 text-center p-6">
+              <div className="text-4xl mb-2">😢</div>
+              <div className="text-red-300">You folded. Waiting for game to end...</div>
+            </Card>
+          )}
+
           {/* Host: Select Winner */}
           {isHost && (
             <Card>
               <h2 className="text-white font-semibold mb-4">👑 SELECT WINNER:</h2>
+              <p className="text-slate-400 text-sm mb-3">Select the player who won the hand:</p>
               <div className="space-y-2 mb-4">
-                {players.map((p) => (
+                {players.filter(p => !p.folded).map((p) => (
                   <button
                     key={p.id}
                     onClick={() => setSelectedWinner(p.user_id)}
@@ -454,6 +598,11 @@ export default function PokerRoom() {
                     {selectedWinner === p.user_id && <span>✓</span>}
                   </button>
                 ))}
+                {players.filter(p => p.folded).length > 0 && (
+                  <div className="text-slate-500 text-sm mt-2 italic">
+                    Folded: {players.filter(p => p.folded).map(p => p.user?.name).join(', ')}
+                  </div>
+                )}
               </div>
 
               <Button
