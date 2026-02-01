@@ -229,6 +229,107 @@ export const cards = [
     requires_admin: false,
     effect: 'copy_card',
   },
+
+  // ============================================
+  // PARTY THEMED CARDS - Fun party activities
+  // ============================================
+  {
+    id: 'photo_bomb',
+    name: 'Photo Bomb',
+    emoji: '📸',
+    description: 'Photobomb someone! They must take a selfie with you.',
+    rarity: 'common',
+    category: 'social',
+    requires_target: true,
+    requires_admin: false,
+    effect: 'social_interaction',
+  },
+  {
+    id: 'toast_master',
+    name: 'Toast Master',
+    emoji: '🥂',
+    description: 'Lead a toast! Everyone must raise their glass.',
+    rarity: 'rare',
+    category: 'social',
+    requires_target: false,
+    requires_admin: false,
+    effect: 'group_action',
+  },
+  {
+    id: 'dance_battle',
+    name: 'Dance Battle',
+    emoji: '🕺',
+    description: 'Challenge someone to a dance-off! Winner gets +3🪙.',
+    rarity: 'rare',
+    category: 'social',
+    requires_target: true,
+    requires_admin: true,
+    effect: 'competition',
+    effect_value: 3,
+  },
+  {
+    id: 'karaoke_king',
+    name: 'Karaoke King',
+    emoji: '🎤',
+    description: 'Sing a song! If you finish, earn +5🪙.',
+    rarity: 'epic',
+    category: 'blessing',
+    requires_target: false,
+    requires_admin: true,
+    effect: 'instant_coins',
+    effect_value: 5,
+  },
+
+  // ============================================
+  // BIRTHDAY THEMED CARDS - Sasha's special day
+  // ============================================
+  {
+    id: 'birthday_wish',
+    name: 'Birthday Wish',
+    emoji: '🎂',
+    description: 'Make a wish! Sasha grants you +4🪙.',
+    rarity: 'rare',
+    category: 'blessing',
+    requires_target: false,
+    requires_admin: false,
+    effect: 'instant_coins',
+    effect_value: 4,
+  },
+  {
+    id: 'cake_thief',
+    name: 'Cake Thief',
+    emoji: '🍰',
+    description: 'Steal a slice! Take 2🪙 from someone.',
+    rarity: 'rare',
+    category: 'attack',
+    requires_target: true,
+    requires_admin: false,
+    effect: 'steal_coins',
+    effect_value: 2,
+  },
+  {
+    id: 'gift_swap',
+    name: 'Gift Swap',
+    emoji: '🎁',
+    description: 'Swap one of your cards with someone else\'s random card.',
+    rarity: 'epic',
+    category: 'wild',
+    requires_target: true,
+    requires_admin: false,
+    effect: 'swap_card',
+  },
+  {
+    id: 'party_crasher',
+    name: 'Party Crasher',
+    emoji: '🎉',
+    description: 'Crash the party! Everyone loses 1🪙, you gain it all.',
+    rarity: 'legendary',
+    category: 'attack',
+    requires_target: false,
+    requires_admin: true,
+    effect: 'steal_from_all',
+    effect_value: 1,
+  },
 ]
 
 // Rarity configuration with colors and probabilities
@@ -270,9 +371,16 @@ export const cardCategories = {
 
 /**
  * Get random card based on rarity probabilities
+ * DJ Power has boosted 15% chance to appear
  * @returns {object} Random card
  */
 export function getRandomCard() {
+  // 15% chance to get DJ Power specifically (boosted)
+  if (Math.random() < 0.15) {
+    const djPower = cards.find((c) => c.id === 'dj_power')
+    if (djPower) return djPower
+  }
+
   const random = Math.random()
   let cumulativeProbability = 0
   let selectedRarity = 'common'
