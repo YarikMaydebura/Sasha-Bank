@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageWrapper } from '../components/layout/PageWrapper'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/ui/Card'
@@ -25,6 +26,8 @@ export function Photos() {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
 
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const user = useUserStore((state) => state.user)
   const updateBalance = useUserStore((state) => state.updateBalance)
   const showToast = useUIStore((state) => state.showToast)
@@ -35,6 +38,21 @@ export function Photos() {
       stopCamera()
     }
   }, [user?.id])
+
+  // Check for specific prompt from notification URL params
+  useEffect(() => {
+    const promptId = searchParams.get('promptId')
+    const promptText = searchParams.get('promptText')
+    const promptEmoji = searchParams.get('promptEmoji')
+
+    if (promptId && promptText) {
+      setCurrentPrompt({
+        id: promptId,
+        text: promptText,
+        emoji: promptEmoji || '📸'
+      })
+    }
+  }, [searchParams])
 
   const fetchPhotos = async () => {
     if (!user?.id) return
@@ -162,6 +180,19 @@ export function Photos() {
 
       updateBalance(newBalance)
       showToast('success', `📸 Photo submitted! +${PHOTO_REWARD}🪙`)
+
+      // Mark notification as read if this came from a photo challenge notification
+      const promptId = searchParams.get('promptId')
+      if (promptId) {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('user_id', user.id)
+          .eq('data->>prompt_id', promptId)
+
+        // Clear URL params
+        setSearchParams({})
+      }
 
       // Reset
       setCapturedImage(null)

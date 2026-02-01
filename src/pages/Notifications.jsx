@@ -34,18 +34,23 @@ const notificationColors = {
   system: 'text-gray-500',
 }
 
-function NotificationItem({ notification, onMarkAsRead, onDelete }) {
+function NotificationItem({ notification, onMarkAsRead, onDelete, onTakePhoto }) {
   const Icon = notificationIcons[notification.type] || Bell
   const colorClass = notificationColors[notification.type] || 'text-gray-500'
 
   const timeAgoText = timeAgo(notification.created_at)
+
+  // Check if this is a photo challenge notification
+  const isPhotoChallenge = notification.data?.notification_type === 'photo_prompt'
 
   return (
     <div
       className={`p-4 rounded-xl border-2 transition-all ${
         notification.is_read
           ? 'bg-white/5 border-white/10'
-          : 'bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30'
+          : isPhotoChallenge
+            ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30'
+            : 'bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30'
       }`}
     >
       <div className="flex items-start gap-3">
@@ -64,6 +69,21 @@ function NotificationItem({ notification, onMarkAsRead, onDelete }) {
           </div>
 
           <p className="text-white/80 text-sm mb-2">{notification.message}</p>
+
+          {/* Photo Challenge Action Button */}
+          {isPhotoChallenge && !notification.is_read && (
+            <Button
+              onClick={(e) => {
+                e.stopPropagation()
+                onTakePhoto(notification)
+              }}
+              variant="primary"
+              size="sm"
+              className="w-full mb-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400"
+            >
+              📷 TAKE PHOTO (+5🪙)
+            </Button>
+          )}
 
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-white/50">{timeAgoText}</span>
@@ -125,6 +145,16 @@ export function Notifications() {
         await clearAll(user.id)
       }
     }
+  }
+
+  // Handle Take Photo button click for photo challenges
+  const handleTakePhoto = (notification) => {
+    const params = new URLSearchParams({
+      promptId: notification.data?.prompt_id || notification.id,
+      promptText: notification.data?.prompt_text || 'Take a photo!',
+      promptEmoji: notification.data?.prompt_emoji || '📸'
+    })
+    navigate(`/photos?${params.toString()}`)
   }
 
   return (
@@ -197,6 +227,7 @@ export function Notifications() {
                   notification={notification}
                   onMarkAsRead={markAsRead}
                   onDelete={deleteNotification}
+                  onTakePhoto={handleTakePhoto}
                 />
               ))}
             </div>

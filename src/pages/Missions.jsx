@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { PageWrapper } from '../components/layout/PageWrapper'
 import { Header } from '../components/layout/Header'
@@ -23,9 +24,11 @@ export function Missions() {
   const [activeTab, setActiveTab] = useState('main')
   const [missions, setMissions] = useState([])
   const [punishments, setPunishments] = useState([])
+  const [photoChallenges, setPhotoChallenges] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedMission, setSelectedMission] = useState(null)
   const [isGettingMore, setIsGettingMore] = useState(false)
+  const navigate = useNavigate()
   const user = useUserStore((state) => state.user)
   const showToast = useUIStore((state) => state.showToast)
 
@@ -62,6 +65,18 @@ export function Missions() {
 
       if (punishmentsError) throw punishmentsError
       setPunishments(punishmentsData || [])
+
+      // Fetch photo challenges (unread photo_prompt notifications)
+      const { data: photoData, error: photoError } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('data->>notification_type', 'photo_prompt')
+        .eq('is_read', false)
+        .order('created_at', { ascending: false })
+
+      if (photoError) throw photoError
+      setPhotoChallenges(photoData || [])
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -199,6 +214,47 @@ export function Missions() {
             {/* Main Missions Tab */}
             {activeTab === 'main' && (
               <>
+                {/* Photo Challenges Section */}
+                {photoChallenges.length > 0 && (
+                  <div className="mb-6">
+                    <Card className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-500/40">
+                      <h3 className="text-purple-300 font-semibold mb-3 flex items-center gap-2">
+                        <span className="text-xl">📸</span> PHOTO CHALLENGE
+                      </h3>
+                      <div className="space-y-3">
+                        {photoChallenges.map((challenge) => (
+                          <div
+                            key={challenge.id}
+                            className="flex items-center justify-between gap-3 bg-purple-500/10 rounded-xl p-3"
+                          >
+                            <div className="flex-1">
+                              <p className="text-white">
+                                {challenge.data?.prompt_emoji || '📸'} {challenge.data?.prompt_text || 'Take a photo!'}
+                              </p>
+                              <Badge variant="coin" size="sm" className="mt-1">+5🪙</Badge>
+                            </div>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  promptId: challenge.data?.prompt_id || challenge.id,
+                                  promptText: challenge.data?.prompt_text || 'Take a photo!',
+                                  promptEmoji: challenge.data?.prompt_emoji || '📸'
+                                })
+                                navigate(`/photos?${params.toString()}`)
+                              }}
+                              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 whitespace-nowrap"
+                            >
+                              📷 Take Photo
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
                 {mainMissions.length > 0 ? (
                   <div className="space-y-3 mb-8">
                     {mainMissions.map((mission) => (
