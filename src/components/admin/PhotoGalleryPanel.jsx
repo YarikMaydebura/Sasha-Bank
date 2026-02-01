@@ -8,16 +8,33 @@ import { supabase } from '../../lib/supabase'
 import { useUIStore } from '../../stores/uiStore'
 import { photoPrompts } from '../../data/photoPrompts'
 
+// Storage limit constants
+const STORAGE_LIMIT_GB = 1
+const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024
+
+// Format bytes to human readable
+const formatBytes = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 export function PhotoGalleryPanel() {
   const [photos, setPhotos] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedPhoto, setSelectedPhoto] = useState(null)
   const [isSendingPrompt, setIsSendingPrompt] = useState(false)
+  const [storageUsed, setStorageUsed] = useState(0)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isClearing, setIsClearing] = useState(false)
 
   const showToast = useUIStore((state) => state.showToast)
 
   useEffect(() => {
     fetchAllPhotos()
+    fetchStorageUsage()
 
     // Real-time subscription
     const channel = supabase
@@ -56,6 +73,22 @@ export function PhotoGalleryPanel() {
       console.error('Error fetching photos:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchStorageUsage = async () => {
+    try {
+      const { data, error } = await supabase.storage.from('photos').list('', {
+        limit: 1000,
+        offset: 0,
+      })
+      if (error) throw error
+
+      // Sum all file sizes
+      const totalBytes = data?.reduce((acc, file) => acc + (file.metadata?.size || 0), 0) || 0
+      setStorageUsed(totalBytes)
+    } catch (error) {
+      console.error('Error fetching storage usage:', error)
     }
   }
 
@@ -111,6 +144,85 @@ export function PhotoGalleryPanel() {
     window.open(photoUrl, '_blank')
   }
 
+  const handleDownloadZip = async () => {
+    if (photos.length === 0) {
+      showToast('error', 'No photos to download')
+      return
+    }
+
+    setIsDownloading(true)
+
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i]
+        const response = await fetch(photo.photo_url)
+        const blob = await response.blob()
+
+        const userName = (photo.users?.name || 'unknown').replace(/[^a-z0-9]/gi, '_')
+        const promptText = (photo.prompt_text || 'photo').slice(0, 20).replace(/[^a-z0-9]/gi, '_')
+        const timestamp = new Date(photo.created_at).getTime()
+        const filename = `${userName}_${promptText}_${timestamp}.jpg`
+
+        zip.file(filename, blob)
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(content)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `sasha-party-photos-${Date.now()}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      showToast('success', `📦 Downloaded ${photos.length} photos!`)
+    } catch (error) {
+      console.error('Error creating ZIP:', error)
+      showToast('error', 'Failed to create ZIP')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleClearStorage = async () => {
+    if (!confirm('⚠️ Delete all photo FILES from storage? Database records will remain but photos will show as broken images. Continue?')) {
+      return
+    }
+
+    setIsClearing(true)
+
+    try {
+      const { data: files, error: listError } = await supabase.storage
+        .from('photos')
+        .list('', { limit: 1000 })
+
+      if (listError) throw listError
+
+      if (!files || files.length === 0) {
+        showToast('info', 'Storage is already empty')
+        setIsClearing(false)
+        return
+      }
+
+      const filePaths = files.map(f => f.name)
+      const { error: deleteError } = await supabase.storage
+        .from('photos')
+        .remove(filePaths)
+
+      if (deleteError) throw deleteError
+
+      setStorageUsed(0)
+      showToast('success', `🗑️ Cleared ${files.length} files from storage!`)
+    } catch (error) {
+      console.error('Error clearing storage:', error)
+      showToast('error', 'Failed to clear storage')
+    } finally {
+      setIsClearing(false)
+    }
+  }
+
   const photosByUser = photos.reduce((acc, photo) => {
     const userId = photo.user_id
     if (!acc[userId]) {
@@ -159,6 +271,55 @@ export function PhotoGalleryPanel() {
         <p className="text-slate-400 text-xs mt-3 text-center">
           Sends a random photo challenge to all guests
         </p>
+      </Card>
+
+      {/* Storage Management */}
+      <Card className="mb-6 bg-slate-800/50 border-slate-700">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-slate-400 text-sm">Storage Used</span>
+          <span className="text-white text-sm font-medium">
+            {formatBytes(storageUsed)} / {STORAGE_LIMIT_GB} GB
+          </span>
+        </div>
+
+        <div className="h-3 bg-slate-700 rounded-full overflow-hidden mb-2">
+          <div
+            className={`h-full transition-all ${
+              storageUsed / STORAGE_LIMIT_BYTES > 0.9
+                ? 'bg-red-500'
+                : storageUsed / STORAGE_LIMIT_BYTES > 0.7
+                  ? 'bg-yellow-500'
+                  : 'bg-green-500'
+            }`}
+            style={{ width: `${Math.min((storageUsed / STORAGE_LIMIT_BYTES) * 100, 100)}%` }}
+          />
+        </div>
+
+        <p className="text-slate-500 text-xs mb-4">
+          {((storageUsed / STORAGE_LIMIT_BYTES) * 100).toFixed(1)}% of free tier used
+        </p>
+
+        <div className="flex gap-3">
+          <Button
+            variant="secondary"
+            onClick={handleDownloadZip}
+            loading={isDownloading}
+            disabled={photos.length === 0}
+            className="flex-1"
+          >
+            📦 Download ZIP ({photos.length})
+          </Button>
+
+          <Button
+            variant="danger"
+            onClick={handleClearStorage}
+            loading={isClearing}
+            disabled={storageUsed === 0}
+            className="flex-1"
+          >
+            🗑️ Clear Storage
+          </Button>
+        </div>
       </Card>
 
       {/* Photos by User */}
