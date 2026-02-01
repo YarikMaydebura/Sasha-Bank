@@ -20,8 +20,10 @@ export function Photos() {
   const [isUploading, setIsUploading] = useState(false)
   const [currentPrompt, setCurrentPrompt] = useState(null)
   const [isCameraActive, setIsCameraActive] = useState(false)
+  const [isCameraLoading, setIsCameraLoading] = useState(false)
   const [stream, setStream] = useState(null)
   const [capturedImage, setCapturedImage] = useState(null)
+  const [facingMode, setFacingMode] = useState('environment') // Back camera by default
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -79,9 +81,10 @@ export function Photos() {
   }
 
   const startCamera = async () => {
+    setIsCameraLoading(true)
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
+        video: { facingMode: facingMode },
         audio: false,
       })
 
@@ -90,6 +93,12 @@ export function Photos() {
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream
+        // CRITICAL: Explicit play() for iOS browsers
+        try {
+          await videoRef.current.play()
+        } catch (playError) {
+          console.error('Video play error:', playError)
+        }
       }
     } catch (error) {
       console.error('Camera error:', error)
@@ -98,7 +107,44 @@ export function Photos() {
       } else {
         showToast('error', 'Failed to access camera')
       }
+    } finally {
+      setIsCameraLoading(false)
     }
+  }
+
+  // Flip camera between front and back
+  const flipCamera = async () => {
+    // Stop current camera
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop())
+    }
+    // Toggle facing mode
+    const newMode = facingMode === 'environment' ? 'user' : 'environment'
+    setFacingMode(newMode)
+    // Small delay before restarting
+    setIsCameraLoading(true)
+    setTimeout(async () => {
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: newMode },
+          audio: false,
+        })
+        setStream(mediaStream)
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream
+          try {
+            await videoRef.current.play()
+          } catch (playError) {
+            console.error('Video play error:', playError)
+          }
+        }
+      } catch (error) {
+        console.error('Camera flip error:', error)
+        showToast('error', 'Failed to switch camera')
+      } finally {
+        setIsCameraLoading(false)
+      }
+    }, 100)
   }
 
   const stopCamera = () => {
@@ -107,6 +153,7 @@ export function Photos() {
       setStream(null)
     }
     setIsCameraActive(false)
+    setIsCameraLoading(false)
     setCapturedImage(null)
   }
 
@@ -117,14 +164,29 @@ export function Photos() {
     const canvas = canvasRef.current
     const context = canvas.getContext('2d')
 
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    // Use video dimensions, fallback to reasonable defaults for iOS
+    const width = video.videoWidth || 640
+    const height = video.videoHeight || 480
+
+    if (width === 0 || height === 0) {
+      showToast('error', 'Camera not ready yet, try again')
+      return
+    }
+
+    canvas.width = width
+    canvas.height = height
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8)
     setCapturedImage(imageDataUrl)
-    stopCamera()
+
+    // Stop camera tracks but keep state for preview
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop())
+      setStream(null)
+    }
+    setIsCameraActive(false)
   }
 
   const handleSubmitPhoto = async () => {
@@ -272,29 +334,51 @@ export function Photos() {
         {/* Camera View */}
         {isCameraActive && !capturedImage && (
           <Card className="mb-6 p-0 overflow-hidden">
-            <div className="relative bg-black">
+            <div className="relative bg-black min-h-[300px]">
+              {/* Loading state */}
+              {isCameraLoading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-10">
+                  <Spinner />
+                  <p className="text-white mt-2 text-sm">Starting camera...</p>
+                </div>
+              )}
+
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-auto"
+                webkit-playsinline="true"
+                className="w-full aspect-[4/3] object-cover bg-black"
+                onLoadedMetadata={() => {
+                  // Ensure video plays when metadata loaded (backup for iOS)
+                  videoRef.current?.play().catch(() => {})
+                }}
               />
 
               {currentPrompt && (
-                <div className="absolute top-4 left-0 right-0 text-center">
+                <div className="absolute top-4 left-0 right-0 text-center z-20">
                   <Badge variant="purple" size="lg">
                     {currentPrompt.emoji} {currentPrompt.text}
                   </Badge>
                 </div>
               )}
 
-              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+              {/* Flip camera button */}
+              <button
+                onClick={flipCamera}
+                className="absolute top-4 right-4 w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white z-20"
+                disabled={isCameraLoading}
+              >
+                🔄
+              </button>
+
+              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent z-20">
                 <div className="flex justify-center gap-3">
                   <Button variant="ghost" onClick={stopCamera}>
                     ❌ Cancel
                   </Button>
-                  <Button variant="primary" size="lg" onClick={capturePhoto}>
+                  <Button variant="primary" size="lg" onClick={capturePhoto} disabled={isCameraLoading}>
                     📸 CAPTURE
                   </Button>
                 </div>
