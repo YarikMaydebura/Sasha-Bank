@@ -485,22 +485,36 @@ export default function PokerRoom() {
           {/* Players */}
           <Card>
             <h2 className="text-white font-semibold mb-3">PLAYERS:</h2>
-            <div className="space-y-2">
-              {players.map((p) => (
-                <div
-                  key={p.id}
-                  className={cn(
-                    "flex justify-between items-center",
-                    p.folded ? "text-slate-500 line-through" : "text-slate-300"
-                  )}
-                >
-                  <span>
-                    {p.folded ? '❌' : '🃏'} {p.user?.name} {p.user_id === table.creator_id && '(Host)'}
-                    {p.folded && ' (Folded)'}
-                  </span>
-                  <span className={p.folded ? "text-slate-500" : "text-coin-gold"}>{p.stack}🪙</span>
-                </div>
-              ))}
+            <div className="space-y-3">
+              {players.map((p) => {
+                const totalBet = p.buy_in - p.stack
+                return (
+                  <div
+                    key={p.id}
+                    className={cn(
+                      "flex justify-between items-center p-2 rounded-lg",
+                      p.folded ? "bg-red-900/20 text-slate-500" : "bg-slate-800/50"
+                    )}
+                  >
+                    <div>
+                      <div className={p.folded ? "line-through text-slate-500" : "text-white"}>
+                        {p.folded ? '❌' : '🃏'} {p.user?.name} {p.user_id === table.creator_id && '(Host)'}
+                      </div>
+                      {p.folded && <div className="text-red-400 text-xs">Folded</div>}
+                    </div>
+                    <div className="text-right">
+                      <div className={p.folded ? "text-slate-500" : "text-coin-gold"}>
+                        {p.stack}🪙 left
+                      </div>
+                      {totalBet > 0 && (
+                        <div className="text-green-400 text-sm">
+                          +{totalBet}🪙 bet
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </Card>
 
@@ -508,9 +522,15 @@ export default function PokerRoom() {
           {myPlayer && !myPlayer.folded && (
             <Card>
               <h2 className="text-white font-semibold mb-4">💰 YOUR ACTIONS:</h2>
-              <div className="text-center mb-4">
-                <div className="text-slate-400">Your Stack:</div>
-                <div className="text-2xl font-bold text-coin-gold">{myPlayer.stack}🪙</div>
+              <div className="flex justify-around mb-4">
+                <div className="text-center">
+                  <div className="text-slate-400 text-sm">Stack Left:</div>
+                  <div className="text-2xl font-bold text-coin-gold">{myPlayer.stack}🪙</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-slate-400 text-sm">Your Bet:</div>
+                  <div className="text-2xl font-bold text-green-400">{myPlayer.buy_in - myPlayer.stack}🪙</div>
+                </div>
               </div>
 
               {/* Raise Input */}
